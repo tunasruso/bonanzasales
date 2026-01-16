@@ -194,39 +194,19 @@ def transform_row(row):
 # SUPABASE UPLOAD
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def clear_supabase_table():
-    """Clear existing data from Supabase table."""
-    log.info("Clearing existing data from Supabase...")
-    
-    headers = {
-        'apikey': SUPABASE_KEY,
-        'Authorization': f'Bearer {SUPABASE_KEY}',
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-    }
-    
-    # Delete all rows
-    url = f"{SUPABASE_URL}/rest/v1/sales_analytics?id=gt.0"
-    response = requests.delete(url, headers=headers)
-    
-    if response.status_code in [200, 204]:
-        log.info("✅ Cleared Supabase table")
-    else:
-        log.warning(f"Clear response: {response.status_code} - {response.text}")
-
-
 def upload_to_supabase(records):
-    """Upload records to Supabase in batches."""
-    log.info(f"Uploading {len(records):,} records to Supabase...")
+    """Upload records to Supabase in batches using UPSERT."""
+    log.info(f"Uploading {len(records):,} records to Supabase (UPSERT)...")
     
     headers = {
         'apikey': SUPABASE_KEY,
         'Authorization': f'Bearer {SUPABASE_KEY}',
         'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
+        'Prefer': 'resolution=merge-duplicates' # Handles duplicates by updating
     }
     
-    url = f"{SUPABASE_URL}/rest/v1/sales_analytics"
+    # on_conflict=recorder_id is handled by resolution=merge-duplicates if unique constraint exists
+    url = f"{SUPABASE_URL}/rest/v1/sales_analytics?on_conflict=recorder_id"
     
     total_uploaded = 0
     errors = 0
@@ -292,8 +272,7 @@ def main():
     conn.close()
     log.info("🔌 Disconnected from 1C")
     
-    # Clear and upload to Supabase
-    clear_supabase_table()
+    # Upload to Supabase (UPSERT)
     uploaded = upload_to_supabase(records)
     
     # Summary
