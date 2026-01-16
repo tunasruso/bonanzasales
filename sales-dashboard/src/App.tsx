@@ -250,7 +250,7 @@ export default function App() {
           if (parts.length !== 2) return 0;
           const mName = parts[0];
           const year = parseInt(parts[1]);
-          const mIdx = Object.entries(MONTH_MAP).find(([k, v]) => v === mName)?.[0];
+          const mIdx = Object.entries(MONTH_MAP).find(([_k, v]) => v === mName)?.[0];
           if (!mIdx) return 0;
           return year * 100 + parseInt(mIdx);
         };
