@@ -82,7 +82,8 @@ def extract_all_sales(cursor):
         u._Description AS unit,
         s.{QUANTITY_COL} AS quantity,
         s.{REVENUE_COL} AS revenue,
-        CONVERT(VARCHAR(50), s.{RECORDER_REF}, 2) AS recorder_id
+        CONVERT(VARCHAR(50), s.{RECORDER_REF}, 2) AS recorder_id,
+        s._LineNo AS line_number
     FROM _AccumRg53715 s
     INNER JOIN _Reference640 w ON s.{WAREHOUSE_REF} = w._IDRRef
     LEFT JOIN _Reference640 m ON w._ParentIDRRef = m._IDRRef
@@ -151,7 +152,7 @@ def get_unit_type(unit):
 
 def transform_row(row):
     """Transform a raw database row into Supabase record format."""
-    sale_date_1c, warehouse, store, product, unit, quantity, revenue, recorder_id = row
+    sale_date_1c, warehouse, store, product, unit, quantity, revenue, recorder_id, line_number = row
     
     sale_date = convert_1c_date(sale_date_1c)
     if not sale_date:
@@ -167,6 +168,9 @@ def transform_row(row):
     
     quantity = float(quantity) if quantity else 0
     revenue = float(revenue) if revenue else 0
+    
+    # Create unique ID using recorder_id + line_number
+    unique_id = f"{recorder_id}_{line_number}"
     
     return {
         'sale_date': sale_date.isoformat(),
@@ -186,7 +190,7 @@ def transform_row(row):
         'quantity_pcs': quantity,
         'quantity_kg': quantity if unit_type == 'kg' else 0,
         'revenue': revenue,
-        'recorder_id': recorder_id
+        'recorder_id': unique_id
     }
 
 
@@ -273,7 +277,16 @@ def main():
     log.info("🔌 Disconnected from 1C")
     
     # Upload to Supabase (UPSERT)
-    uploaded = upload_to_supabase(records)
+    # Dedup records by recorder_id to avoid batch conflicts
+    log.info(f"Deduplicating {len(records):,} records...")
+    unique_map = {}
+    for r in records:
+        unique_map[r['recorder_id']] = r
+    
+    deduped_records = list(unique_map.values())
+    log.info(f"Unique records: {len(deduped_records):,} (removed {len(records) - len(deduped_records)} duplicates)")
+
+    uploaded = upload_to_supabase(deduped_records)
     
     # Summary
     print()
