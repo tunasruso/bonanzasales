@@ -44,71 +44,30 @@ const WEEKDAY_MAP: Record<string, string> = {
   'Sunday': 'Воскресенье'
 };
 
+// Month localization
+const MONTH_MAP: Record<string, string> = {
+  '01': 'Январь',
+  '02': 'Февраль',
+  '03': 'Март',
+  '04': 'Апрель',
+  '05': 'Май',
+  '06': 'Июнь',
+  '07': 'Июль',
+  '08': 'Август',
+  '09': 'Сентябрь',
+  '10': 'Октябрь',
+  '11': 'Ноябрь',
+  '12': 'Декабрь'
+};
+
+const WEEKDAY_ORDER = [
+  'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'
+];
+
 export default function App() {
-  // Date state
-  const [startDate, setStartDate] = useState('2025-09-01');
-  const [endDate, setEndDate] = useState('2026-01-15');
+  // ... (state)
 
-  // Filter state
-  const [selectedStores, setSelectedStores] = useState<string[]>([]);
-  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
-  const [stores, setStores] = useState<string[]>([]);
-  const [productGroups, setProductGroups] = useState<string[]>([]);
-  const [productsList, setProductsList] = useState<string[]>([]);
-
-  // Data state
-  const [salesData, setSalesData] = useState<SalesRecord[]>([]);
-  const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
-  const [kpis, setKpis] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  // Pivot state
-  const [rowDimension, setRowDimension] = useState('store');
-  const [sortColumn, setSortColumn] = useState('revenue');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-
-  // Load initial data
-  useEffect(() => {
-    async function loadFilters() {
-      const [storeList, groupList, prodList] = await Promise.all([
-        fetchDistinctValues('store'),
-        fetchDistinctValues('product_group'),
-        fetchDistinctValues('product')
-      ]);
-      setStores(storeList);
-      setProductGroups(groupList);
-      setProductsList(prodList);
-    }
-    loadFilters();
-  }, []);
-
-  // Load sales and inventory data
-  const loadData = async () => {
-    setLoading(true);
-    const [data, kpiData, inventory] = await Promise.all([
-      fetchSalesData(startDate, endDate,
-        selectedStores.length > 0 ? selectedStores : undefined,
-        selectedGroups.length > 0 ? selectedGroups : undefined,
-        selectedProducts.length > 0 ? selectedProducts : undefined
-      ),
-      fetchKPIs(startDate, endDate,
-        selectedStores.length > 0 ? selectedStores : undefined,
-        selectedGroups.length > 0 ? selectedGroups : undefined,
-        selectedProducts.length > 0 ? selectedProducts : undefined
-      ),
-      fetchInventory()
-    ]);
-    setSalesData(data);
-    setKpis(kpiData);
-    setInventoryData(inventory);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
+  // ... (loadData)
 
   // Aggregate data by dimension
   const aggregatedData = useMemo(() => {
@@ -122,7 +81,11 @@ export default function App() {
       else if (rowDimension === 'product_group') key = record.product_group;
       else if (rowDimension === 'product') key = record.product;
       else if (rowDimension === 'weekday') key = WEEKDAY_MAP[record.weekday] || record.weekday;
-      else if (rowDimension === 'month') key = `${record.year}-${String(record.month).padStart(2, '0')}`;
+      else if (rowDimension === 'month') {
+        const monthNum = String(record.month).padStart(2, '0');
+        const monthName = MONTH_MAP[monthNum];
+        key = `${monthName} ${record.year}`;
+      }
 
       const existing = grouped.get(key) || { revenue: 0, kg: 0, pcs: 0, count: 0, stock: 0 };
       grouped.set(key, {
@@ -136,6 +99,7 @@ export default function App() {
 
     // Process Inventory
     if (inventoryData.length > 0) {
+      // ... (inventory logic same as before, no changes needed for weekday/month grouping as stock is mostly for store/product)
       if (rowDimension === 'store') {
         inventoryData.forEach(item => {
           // Filter by selected stores
@@ -143,12 +107,7 @@ export default function App() {
 
           // Filter by selected product groups
           if (selectedGroups.length > 0) {
-            // Exact match or partial match (if hierarchy is complex). For now exact/partial name match
-            // But our dropdown values are from sales_analytics.product_group
-            // Ideally item.product_group should match exactly.
             if (item.product_group && !selectedGroups.includes(item.product_group)) return;
-            // If item has no group but we selected groups, better to exclude or include? 
-            // Safe bet: exclude.
             if (!item.product_group) return;
           }
 
@@ -194,6 +153,51 @@ export default function App() {
 
     // Sort
     result.sort((a, b) => {
+      // Custom sorting for Weekdays
+      if (rowDimension === 'weekday') {
+        const idxA = WEEKDAY_ORDER.indexOf(a.name);
+        const idxB = WEEKDAY_ORDER.indexOf(b.name);
+        // If user explicitly sorted by a metric, respect that?
+        // The user request says "when grouping by weeks, sort Mon-Sun".
+        // Let's assume natural sort order overrides default metric sort for the MAIN view,
+        // but if user clicks a column header (e.g. Revenue), they might expect revenue sort?
+        // However, `sortColumn` defaults to 'revenue'.
+        // Let's implement: If sortColumn is 'revenue' (default) AND dimension is time, force chronological.
+        // If user clicks other columns, `sortColumn` changes, and we might want to respect that.
+        // But usually time series are best viewed chronically.
+
+        // For now, let's force chronological sort if sortColumn is NOT explicitly set to something else by user click?
+        // Actually `sortColumn` is state.
+
+        // User requirement: "sort days from Mon to Sun".
+        // Implementation: If sortColumn is 'revenue' (the default) OR 'name' (if we had one), prefer chronological for time dimensions. 
+        // But table has sortable headers. 
+        // Let's prioritize the specific request: When grouping by weekday, sort Mon -> Sun. 
+        // We can do this by checking if the sort column is 'revenue' (default) - or we can just enforce it as a secondary sort or primary?
+        // Let's make it the primary sort logic if we are in 'weekday' mode, UNLESS user explicitly clicks something else?
+        // Actually, simpler: Just sort by index if we are in weekday mode.
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      }
+
+      // Custom sorting for Months
+      if (rowDimension === 'month') {
+        // Parse "Month YYYY" back to date or just compare?
+        // "Январь 2025" vs "Январь 2026" vs "Февраль 2025".
+        // Robust way: map month name back to index 0-11, then compare year + month.
+        const parseDate = (str: string) => {
+          const parts = str.split(' ');
+          if (parts.length !== 2) return 0;
+          const mName = parts[0];
+          const year = parseInt(parts[1]);
+          const mIdx = Object.entries(MONTH_MAP).find(([k, v]) => v === mName)?.[0];
+          if (!mIdx) return 0;
+          return year * 100 + parseInt(mIdx);
+        };
+        const valA = parseDate(a.name);
+        const valB = parseDate(b.name);
+        return valA - valB;
+      }
+
       const aVal = a[sortColumn as keyof typeof a] as number;
       const bVal = b[sortColumn as keyof typeof b] as number;
       return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
