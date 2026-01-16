@@ -65,9 +65,70 @@ const WEEKDAY_ORDER = [
 ];
 
 export default function App() {
-  // ... (state)
+  // Date state
+  const [startDate, setStartDate] = useState('2025-09-01');
+  const [endDate, setEndDate] = useState('2026-01-15');
 
-  // ... (loadData)
+  // Filter state
+  const [selectedStores, setSelectedStores] = useState<string[]>([]);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [stores, setStores] = useState<string[]>([]);
+  const [productGroups, setProductGroups] = useState<string[]>([]);
+  const [productsList, setProductsList] = useState<string[]>([]);
+
+  // Data state
+  const [salesData, setSalesData] = useState<SalesRecord[]>([]);
+  const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
+  const [kpis, setKpis] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Pivot state
+  const [rowDimension, setRowDimension] = useState('store');
+  const [sortColumn, setSortColumn] = useState('revenue');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  // Load initial data
+  useEffect(() => {
+    async function loadFilters() {
+      const [storeList, groupList, prodList] = await Promise.all([
+        fetchDistinctValues('store'),
+        fetchDistinctValues('product_group'),
+        fetchDistinctValues('product')
+      ]);
+      setStores(storeList);
+      setProductGroups(groupList);
+      setProductsList(prodList);
+    }
+    loadFilters();
+  }, []);
+
+  // Load sales and inventory data
+  const loadData = async () => {
+    setLoading(true);
+    const [data, kpiData, inventory] = await Promise.all([
+      fetchSalesData(startDate, endDate,
+        selectedStores.length > 0 ? selectedStores : undefined,
+        selectedGroups.length > 0 ? selectedGroups : undefined,
+        selectedProducts.length > 0 ? selectedProducts : undefined
+      ),
+      fetchKPIs(startDate, endDate,
+        selectedStores.length > 0 ? selectedStores : undefined,
+        selectedGroups.length > 0 ? selectedGroups : undefined,
+        selectedProducts.length > 0 ? selectedProducts : undefined
+      ),
+      fetchInventory()
+    ]);
+    setSalesData(data);
+    setKpis(kpiData);
+    setInventoryData(inventory);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   // Aggregate data by dimension
   const aggregatedData = useMemo(() => {
