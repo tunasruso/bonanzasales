@@ -33,71 +33,19 @@ function formatCurrency(num: number | undefined | null): string {
   }).format(num);
 }
 
+// Weekday localization
+const WEEKDAY_MAP: Record<string, string> = {
+  'Monday': 'Понедельник',
+  'Tuesday': 'Вторник',
+  'Wednesday': 'Среда',
+  'Thursday': 'Четверг',
+  'Friday': 'Пятница',
+  'Saturday': 'Суббота',
+  'Sunday': 'Воскресенье'
+};
+
 export default function App() {
-  // Date state
-  const [startDate, setStartDate] = useState('2025-09-01');
-  const [endDate, setEndDate] = useState('2026-01-15');
-
-  // Filter state
-  const [selectedStores, setSelectedStores] = useState<string[]>([]);
-  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
-  const [stores, setStores] = useState<string[]>([]);
-  const [productGroups, setProductGroups] = useState<string[]>([]);
-  const [productsList, setProductsList] = useState<string[]>([]);
-
-  // Data state
-  const [salesData, setSalesData] = useState<SalesRecord[]>([]);
-  const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
-  const [kpis, setKpis] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  // Pivot state
-  const [rowDimension, setRowDimension] = useState('store');
-  const [sortColumn, setSortColumn] = useState('revenue');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-
-  // Load initial data
-  useEffect(() => {
-    async function loadFilters() {
-      const [storeList, groupList, prodList] = await Promise.all([
-        fetchDistinctValues('store'),
-        fetchDistinctValues('product_group'),
-        fetchDistinctValues('product')
-      ]);
-      setStores(storeList);
-      setProductGroups(groupList);
-      setProductsList(prodList);
-    }
-    loadFilters();
-  }, []);
-
-  // Load sales and inventory data
-  const loadData = async () => {
-    setLoading(true);
-    const [data, kpiData, inventory] = await Promise.all([
-      fetchSalesData(startDate, endDate,
-        selectedStores.length > 0 ? selectedStores : undefined,
-        selectedGroups.length > 0 ? selectedGroups : undefined,
-        selectedProducts.length > 0 ? selectedProducts : undefined
-      ),
-      fetchKPIs(startDate, endDate,
-        selectedStores.length > 0 ? selectedStores : undefined,
-        selectedGroups.length > 0 ? selectedGroups : undefined,
-        selectedProducts.length > 0 ? selectedProducts : undefined
-      ),
-      fetchInventory()
-    ]);
-    setSalesData(data);
-    setKpis(kpiData);
-    setInventoryData(inventory);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
+  // ... (state)
 
   // Aggregate data by dimension
   const aggregatedData = useMemo(() => {
@@ -110,7 +58,7 @@ export default function App() {
       if (rowDimension === 'store') key = record.store;
       else if (rowDimension === 'product_group') key = record.product_group;
       else if (rowDimension === 'product') key = record.product;
-      else if (rowDimension === 'weekday') key = record.weekday;
+      else if (rowDimension === 'weekday') key = WEEKDAY_MAP[record.weekday] || record.weekday;
       else if (rowDimension === 'month') key = `${record.year}-${String(record.month).padStart(2, '0')}`;
 
       const existing = grouped.get(key) || { revenue: 0, kg: 0, pcs: 0, count: 0, stock: 0 };
