@@ -452,189 +452,228 @@ export default function App() {
         </div>
       ) : (
         <>
-          {/* KPI Cards */}
-          <div className="kpi-grid">
-            <div className="kpi-card blue">
-              <div className="kpi-icon"><TrendingUp size={24} /></div>
-              <div className="kpi-label">Выручка</div>
-              <div className="kpi-value">{formatCurrency(kpis?.totalRevenue || 0)}</div>
-            </div>
-            <div className="kpi-card green">
-              <div className="kpi-icon"><Weight size={24} /></div>
-              <div className="kpi-label">Продано (кг)</div>
-              <div className="kpi-value">{formatNumber(kpis?.totalKg || 0, 0)} кг</div>
-            </div>
-            <div className="kpi-card purple">
-              <div className="kpi-icon"><Package size={24} /></div>
-              <div className="kpi-label">Продано (шт)</div>
-              <div className="kpi-value">{formatNumber(kpis?.totalPcs || 0)} шт</div>
-            </div>
-            <div className="kpi-card pink">
-              <div className="kpi-icon"><ShoppingCart size={24} /></div>
-              <div className="kpi-label">Чеков</div>
-              <div className="kpi-value">{formatNumber(kpis?.uniqueChecks || 0)}</div>
-            </div>
-            <div className="kpi-card orange">
-              <div className="kpi-icon"><Receipt size={24} /></div>
-              <div className="kpi-label">Средний чек</div>
-              <div className="kpi-value">{formatCurrency(kpis?.avgCheck || 0)}</div>
-            </div>
-          </div>
-
-          {/* Charts (Keep charts as is) */}
-          <div className="charts-grid">
-            <div className="chart-card">
-              <h3>📈 Выручка по месяцам</h3>
-              <div className="chart-container">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={monthlyData}>
-                    <defs>
-                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#00d4ff" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#00d4ff" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                    <XAxis dataKey="month" stroke="#6c6c7c" />
-                    <YAxis stroke="#6c6c7c" tickFormatter={v => `${(v / 1000000).toFixed(1)}М`} />
-                    <Tooltip
-                      contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)' }}
-                      formatter={(value: number | undefined) => [formatCurrency(value), 'Выручка']}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="revenue"
-                      stroke="#00d4ff"
-                      strokeWidth={3}
-                      fill="url(#colorRevenue)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+          {activeTab === 'dashboard' ? (
+            <>
+              {/* KPI Cards */}
+              <div className="kpi-grid">
+                <div className="kpi-card blue">
+                  <div className="kpi-icon"><TrendingUp size={24} /></div>
+                  <div className="kpi-label">Выручка</div>
+                  <div className="kpi-value">{formatCurrency(kpis?.totalRevenue || 0)}</div>
+                </div>
+                <div className="kpi-card green">
+                  <div className="kpi-icon"><Weight size={24} /></div>
+                  <div className="kpi-label">Продано (кг)</div>
+                  <div className="kpi-value">{formatNumber(kpis?.totalKg || 0, 0)} кг</div>
+                </div>
+                <div className="kpi-card purple">
+                  <div className="kpi-icon"><Package size={24} /></div>
+                  <div className="kpi-label">Продано (шт)</div>
+                  <div className="kpi-value">{formatNumber(kpis?.totalPcs || 0)} шт</div>
+                </div>
+                <div className="kpi-card pink">
+                  <div className="kpi-icon"><ShoppingCart size={24} /></div>
+                  <div className="kpi-label">Чеков</div>
+                  <div className="kpi-value">{formatNumber(kpis?.uniqueChecks || 0)}</div>
+                </div>
+                <div className="kpi-card orange">
+                  <div className="kpi-icon"><Receipt size={24} /></div>
+                  <div className="kpi-label">Средний чек</div>
+                  <div className="kpi-value">{formatCurrency(kpis?.avgCheck || 0)}</div>
+                </div>
               </div>
-            </div>
 
-            <div className="chart-card">
-              <h3>🏪 Доля выручки по магазинам</h3>
-              <div className="chart-container">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {pieData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              {/* Charts (Keep charts as is) */}
+              <div className="charts-grid">
+                <div className="chart-card">
+                  <h3>📈 Выручка по месяцам</h3>
+                  <div className="chart-container">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={monthlyData}>
+                        <defs>
+                          <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#00d4ff" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#00d4ff" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                        <XAxis dataKey="month" stroke="#6c6c7c" />
+                        <YAxis stroke="#6c6c7c" tickFormatter={v => `${(v / 1000000).toFixed(1)}М`} />
+                        <Tooltip
+                          contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)' }}
+                          formatter={(value: number | undefined) => [formatCurrency(value), 'Выручка']}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="revenue"
+                          stroke="#00d4ff"
+                          strokeWidth={3}
+                          fill="url(#colorRevenue)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="chart-card">
+                  <h3>🏪 Доля выручки по магазинам</h3>
+                  <div className="chart-container">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={100}
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {pieData.map((_, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)' }}
+                          formatter={(value: number | undefined) => [formatCurrency(value), 'Выручка']}
+                        />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="chart-card">
+                  <h3>📦 Продажи в кг по месяцам</h3>
+                  <div className="chart-container">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={monthlyData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                        <XAxis dataKey="month" stroke="#6c6c7c" />
+                        <YAxis stroke="#6c6c7c" />
+                        <Tooltip
+                          contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)' }}
+                          formatter={(value: number | undefined) => [formatNumber(value, 0) + ' кг', 'Количество']}
+                        />
+                        <Bar dataKey="kg" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="chart-card">
+                  <h3>📊 Топ магазинов по выручке</h3>
+                  <div className="chart-container">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={aggregatedData.slice(0, 10)} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                        <XAxis type="number" stroke="#6c6c7c" tickFormatter={v => `${(v / 1000000).toFixed(1)}М`} />
+                        <YAxis dataKey="name" type="category" stroke="#6c6c7c" width={100} />
+                        <Tooltip
+                          contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)' }}
+                          formatter={(value: number | undefined) => [formatCurrency(value), 'Выручка']}
+                        />
+                        <Bar dataKey="revenue" fill="#22c55e" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* Data Table with Stock Column */}
+              <div className="table-section">
+                <div className="table-header">
+                  <h3>📋 Сводная таблица</h3>
+                  <div className="pivot-controls">
+                    <select value={rowDimension} onChange={e => setRowDimension(e.target.value)}>
+                      <option value="store">По магазинам</option>
+                      <option value="product_group">По товарным группам</option>
+                      <option value="product">По номенклатуре</option>
+                      <option value="weekday">По дням недели</option>
+                      <option value="month">По месяцам</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="data-table-wrapper">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Название</th>
+                        <th className="sortable number" onClick={() => handleSort('revenue')}>
+                          Выручка <ArrowUpDown size={14} />
+                        </th>
+                        {(rowDimension === 'store' || rowDimension === 'product') && (
+                          <th className="sortable number" onClick={() => handleSort('stock')}>
+                            Остаток (Склад) <ArrowUpDown size={14} />
+                          </th>
+                        )}
+                        <th className="sortable number" onClick={() => handleSort('kg')}>
+                          Кг <ArrowUpDown size={14} />
+                        </th>
+                        <th className="sortable number" onClick={() => handleSort('pcs')}>
+                          Шт <ArrowUpDown size={14} />
+                        </th>
+                        <th className="sortable number" onClick={() => handleSort('transactions')}>
+                          Транзакций <ArrowUpDown size={14} />
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aggregatedData.map((row, index) => (
+                        <tr key={index}>
+                          <td>{row.name}</td>
+                          <td className="number revenue">{formatCurrency(row.revenue)}</td>
+                          {(rowDimension === 'store' || rowDimension === 'product') && (
+                            <td className="number" style={{ color: '#eab308' }}>
+                              {row.stock ? formatNumber(row.stock, 0) : '-'}
+                            </td>
+                          )}
+                          <td className="number kg">{formatNumber(row.kg, 0)} кг</td>
+                          <td className="number pcs">{formatNumber(row.pcs)} шт</td>
+                          <td className="number">{formatNumber(row.transactions)}</td>
+                        </tr>
                       ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)' }}
-                      formatter={(value: number | undefined) => [formatCurrency(value), 'Выручка']}
-                    />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-
-            <div className="chart-card">
-              <h3>📦 Продажи в кг по месяцам</h3>
-              <div className="chart-container">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                    <XAxis dataKey="month" stroke="#6c6c7c" />
-                    <YAxis stroke="#6c6c7c" />
-                    <Tooltip
-                      contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)' }}
-                      formatter={(value: number | undefined) => [formatNumber(value, 0) + ' кг', 'Количество']}
-                    />
-                    <Bar dataKey="kg" fill="#a855f7" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+            </>
+          ) : (
+            <div className="table-section">
+              <div className="table-header">
+                <h3>📦 Остатки на складе ({filteredInventory.length})</h3>
               </div>
-            </div>
-
-            <div className="chart-card">
-              <h3>📊 Топ магазинов по выручке</h3>
-              <div className="chart-container">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={aggregatedData.slice(0, 10)} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                    <XAxis type="number" stroke="#6c6c7c" tickFormatter={v => `${(v / 1000000).toFixed(1)}М`} />
-                    <YAxis dataKey="name" type="category" stroke="#6c6c7c" width={100} />
-                    <Tooltip
-                      contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)' }}
-                      formatter={(value: number | undefined) => [formatCurrency(value), 'Выручка']}
-                    />
-                    <Bar dataKey="revenue" fill="#22c55e" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-
-          {/* Data Table with Stock Column */}
-          <div className="table-section">
-            <div className="table-header">
-              <h3>📋 Сводная таблица</h3>
-              <div className="pivot-controls">
-                <select value={rowDimension} onChange={e => setRowDimension(e.target.value)}>
-                  <option value="store">По магазинам</option>
-                  <option value="product_group">По товарным группам</option>
-                  <option value="product">По номенклатуре</option>
-                  <option value="weekday">По дням недели</option>
-                  <option value="month">По месяцам</option>
-                </select>
-              </div>
-            </div>
-            <div className="data-table-wrapper">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Название</th>
-                    <th className="sortable number" onClick={() => handleSort('revenue')}>
-                      Выручка <ArrowUpDown size={14} />
-                    </th>
-                    {(rowDimension === 'store' || rowDimension === 'product') && (
-                      <th className="sortable number" onClick={() => handleSort('stock')}>
-                        Остаток (Склад) <ArrowUpDown size={14} />
-                      </th>
-                    )}
-                    <th className="sortable number" onClick={() => handleSort('kg')}>
-                      Кг <ArrowUpDown size={14} />
-                    </th>
-                    <th className="sortable number" onClick={() => handleSort('pcs')}>
-                      Шт <ArrowUpDown size={14} />
-                    </th>
-                    <th className="sortable number" onClick={() => handleSort('transactions')}>
-                      Транзакций <ArrowUpDown size={14} />
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {aggregatedData.map((row, index) => (
-                    <tr key={index}>
-                      <td>{row.name}</td>
-                      <td className="number revenue">{formatCurrency(row.revenue)}</td>
-                      {(rowDimension === 'store' || rowDimension === 'product') && (
-                        <td className="number" style={{ color: '#eab308' }}>
-                          {row.stock ? formatNumber(row.stock, 0) : '-'}
-                        </td>
-                      )}
-                      <td className="number kg">{formatNumber(row.kg, 0)} кг</td>
-                      <td className="number pcs">{formatNumber(row.pcs)} шт</td>
-                      <td className="number">{formatNumber(row.transactions)}</td>
+              <div className="data-table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Магазин</th>
+                      <th>Группа товара</th>
+                      <th>Номенклатура</th>
+                      <th className="number">Остаток</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filteredInventory.slice(0, 500).map((item, index) => (
+                      <tr key={index}>
+                        <td>{item.store}</td>
+                        <td>{item.product_group || '-'}</td>
+                        <td>{item.product}</td>
+                        <td className="number" style={{ color: '#eab308', fontWeight: 'bold' }}>
+                          {formatNumber(item.quantity, 0)}
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredInventory.length === 0 && (
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'center', padding: '20px' }}>Нет данных по выбранным фильтрам</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
         </>
       )}
     </div>
