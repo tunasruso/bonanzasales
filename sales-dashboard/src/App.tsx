@@ -130,6 +130,19 @@ export default function App() {
     loadData();
   }, []);
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory'>('dashboard');
+
+  // Filtered Inventory Data
+  const filteredInventory = useMemo(() => {
+    return inventoryData.filter(item => {
+      if (selectedStores.length > 0 && !selectedStores.includes(item.store)) return false;
+      if (selectedGroups.length > 0 && item.product_group && !selectedGroups.includes(item.product_group)) return false;
+      if (selectedProducts.length > 0 && !selectedProducts.includes(item.product)) return false;
+      return true;
+    }).sort((a, b) => b.quantity - a.quantity);
+  }, [inventoryData, selectedStores, selectedGroups, selectedProducts]);
+
   // Aggregate data by dimension
   const aggregatedData = useMemo(() => {
     const grouped = new Map<string, { revenue: number; kg: number; pcs: number; count: number; stock: number }>();
@@ -334,7 +347,35 @@ export default function App() {
           <span className="logo">📊</span>
           <h1>Бонанза продажи</h1>
         </div>
-        <button className="apply-btn" onClick={loadData}>
+        <div className="tab-controls" style={{ display: 'flex', gap: '10px', marginLeft: '20px' }}>
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            style={{
+              background: activeTab === 'dashboard' ? '#3b82f6' : '#1f2937',
+              color: 'white',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}
+          >
+            Продажи
+          </button>
+          <button
+            onClick={() => setActiveTab('inventory')}
+            style={{
+              background: activeTab === 'inventory' ? '#3b82f6' : '#1f2937',
+              color: 'white',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}
+          >
+            Остатки
+          </button>
+        </div>
+        <button className="apply-btn" onClick={loadData} style={{ marginLeft: 'auto' }}>
           <RefreshCw size={16} style={{ marginRight: 8 }} />
           Обновить
         </button>
@@ -342,22 +383,26 @@ export default function App() {
 
       {/* Filters */}
       <div className="filters-bar">
-        <div className="filter-group">
-          <label><Calendar size={12} /> Начало</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={e => setStartDate(e.target.value)}
-          />
-        </div>
-        <div className="filter-group">
-          <label><Calendar size={12} /> Конец</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={e => setEndDate(e.target.value)}
-          />
-        </div>
+        {activeTab === 'dashboard' && (
+          <>
+            <div className="filter-group">
+              <label><Calendar size={12} /> Начало</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+              />
+            </div>
+            <div className="filter-group">
+              <label><Calendar size={12} /> Конец</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+              />
+            </div>
+          </>
+        )}
         <div className="filter-group">
           <label><Store size={12} /> Магазин</label>
           <select
