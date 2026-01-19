@@ -64,10 +64,16 @@ const WEEKDAY_ORDER = [
   'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'
 ];
 
+// Helper to get today's date in YYYY-MM-DD format
+function getTodayDate(): string {
+  const today = new Date();
+  return today.toISOString().split('T')[0];
+}
+
 export default function App() {
-  // Date state
-  const [startDate, setStartDate] = useState('2025-09-01');
-  const [endDate, setEndDate] = useState('2026-01-15');
+  // Date state - default to today
+  const [startDate, setStartDate] = useState(getTodayDate());
+  const [endDate, setEndDate] = useState(getTodayDate());
 
   // Filter state
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
