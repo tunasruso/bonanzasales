@@ -9,13 +9,12 @@ import time
 image = (
     modal.Image.debian_slim()
     # Install dependencies:
-    # - freetds-dev: for pymssql
     # - curl, gnupg: for Tailscale install
     # - gzip: for gost install
-    .apt_install("freetds-dev", "gcc", "g++", "make", "curl", "gnupg", "gzip")
+    .apt_install("curl", "gnupg", "gzip")
     
     # Python dependencies
-    .pip_install("pymssql", "requests")
+    .pip_install("psycopg2-binary", "requests", "pandas", "numpy")
     
     # Install Tailscale
     .run_commands(
@@ -31,7 +30,8 @@ image = (
         "chmod +x /usr/local/bin/gost"
     )
 
-    # Mount the sync script directly into the image
+    # Mount the verified sync scripts
+    .add_local_file("/Users/tunasruso/Documents/Antigravity/StasSales1CBackEnd/custom_inventory_sync.py", "/root/custom_inventory_sync.py")
     .add_local_file("/Users/tunasruso/Documents/Antigravity/StasSales1CBackEnd/sync_to_supabase.py", "/root/sync_to_supabase.py")
 )
 
@@ -81,15 +81,14 @@ def run_sync_job():
         raise e
 
     # ═══════════════════════════════════════════════════════════════════════════════
-    # 2. START GOST Tunnel
+    # 2. START GOST Tunnel for PostgreSQL
     # ═══════════════════════════════════════════════════════════════════════════════
-    # Map Local 1433 -> Tailscale 100.126.198.90:1433 via SOCKS5 1055
-    log.info("🔌 Starting GOST Tunnel (127.0.0.1:1433 -> 100.126.198.90:1433)...")
+    # Map Local 5432 -> Tailscale 100.91.185.91:5444 via SOCKS5 1055
+    log.info("🔌 Starting GOST Tunnel (127.0.0.1:5432 -> 100.91.185.91:5444)...")
     
-    # gost -L tcp://127.0.0.1:1433/100.126.198.90:1433 -F socks5://127.0.0.1:1055
     gost_cmd = [
         "gost",
-        "-L", "tcp://127.0.0.1:1433/100.126.198.90:1433",
+        "-L", "tcp://127.0.0.1:5432/100.91.185.91:5444",
         "-F", "socks5://127.0.0.1:1055"
     ]
     
@@ -104,23 +103,33 @@ def run_sync_job():
     log.info("✅ GOST Tunnel running")
     
     # ═══════════════════════════════════════════════════════════════════════════════
-    # 3. EXECUTE SYNC SCRIPT
+    # 3. EXECUTE SYNC LOGIC
     # ═══════════════════════════════════════════════════════════════════════════════
     log.info("🚀 Launching sync logic...")
     
-    # Add root to path so we can import the script
+    # Add root to path
     sys.path.append("/root")
     
+    # INJECT CREDENTIALS
+    os.environ['POSTGRES_HOST'] = '127.0.0.1' # Local tunnel end
+    os.environ['POSTGRES_PORT'] = '5432'      # Local tunnel end
+    os.environ['POSTGRES_USER'] = 'ecostock'
+    os.environ['POSTGRES_PASSWORD'] = 'Kd*2m5Th'
+    os.environ['POSTGRES_DB'] = 'onec_ecostock_retail'
+    
     try:
+        import custom_inventory_sync
         import sync_to_supabase
         
-        # MONKEY PATCH CONFIGURATION to use Localhost Tunnel
-        log.info("🔧 Patching DB Configuration to use Localhost Tunnel...")
-        sync_to_supabase.DB_CONFIG['server'] = '127.0.0.1'
-        sync_to_supabase.DB_CONFIG['port'] = 1433 
-        
-        # START
+        # --- JOB 1: INVENTORY SYNC ---
+        log.info("📦 [1/2] Syncing INVENTORY...")
+        custom_inventory_sync.upload_to_supabase(custom_inventory_sync.extract_inventory())
+        log.info("✅ Inventory sync completed.")
+
+        # --- JOB 2: SALES SYNC ---
+        log.info("💰 [2/2] Syncing SALES...")
         sync_to_supabase.main()
+        log.info("✅ Sales sync completed.")
         
     except Exception as e:
         log.error(f"❌ Sync failed: {e}")

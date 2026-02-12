@@ -1,4 +1,4 @@
-import pymssql
+import psycopg2
 import os
 import requests
 import json
@@ -16,15 +16,16 @@ class DecimalEncoder(json.JSONEncoder):
         return super(DecimalEncoder, self).default(o)
 
 def get_db_connection():
-    return pymssql.connect(
-        server=os.getenv('MSSQL_HOST', '100.126.198.90'),
-        user=os.getenv('MSSQL_USER', 'ai_bot'),
-        password=os.getenv('MSSQL_PASSWORD', 'A8Ew}Glc'),
-        database=os.getenv('MSSQL_DB', 'Roznica')
+    return psycopg2.connect(
+        host=os.getenv('POSTGRES_HOST'),
+        user=os.getenv('POSTGRES_USER'),
+        password=os.getenv('POSTGRES_PASSWORD'),
+        dbname=os.getenv('POSTGRES_DB', 'Roznica'),
+        port=os.getenv('POSTGRES_PORT', 5432)
     )
 
 def extract_inventory():
-    print("Connecting to MS SQL...")
+    print("Connecting to PostgreSQL...")
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -37,7 +38,7 @@ def extract_inventory():
     
     query = """
     SELECT 
-        ISNULL(m._Description, w._Description) as Store,
+        COALESCE(m._Description, w._Description) as Store,
         n._Description as Product,
         SUM(CASE WHEN s._RecordKind = 0 THEN s._Fld52575 ELSE -s._Fld52575 END) as Quantity,
         g._Description as ProductGroup
@@ -46,8 +47,8 @@ def extract_inventory():
     LEFT JOIN _Reference640 m ON w._ParentIDRRef = m._IDRRef -- Parent Store Group
     JOIN _Reference387 n ON s._Fld52570RRef = n._IDRRef -- Product
     LEFT JOIN _Reference387 g ON n._ParentIDRRef = g._IDRRef -- Product Group
-    WHERE s._Active = 1
-    GROUP BY ISNULL(m._Description, w._Description), n._Description, g._Description
+    WHERE s._Active = true
+    GROUP BY COALESCE(m._Description, w._Description), n._Description, g._Description
     HAVING SUM(CASE WHEN s._RecordKind = 0 THEN s._Fld52575 ELSE -s._Fld52575 END) <> 0
     ORDER BY Store, n._Description
     """

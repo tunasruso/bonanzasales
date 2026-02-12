@@ -11,23 +11,25 @@ Output: LeaderTex_Sales_Dec2025.xlsx
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
-import pymssql
+import psycopg2
 import pandas as pd
 import numpy as np
 from decimal import Decimal
 from datetime import datetime, timedelta
 import logging
 import sys
+import os
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
 DB_CONFIG = {
-    'server': '100.126.198.90',
-    'user': 'ai_bot',
-    'password': 'A8Ew}Glc',
-    'database': 'Roznica'
+    'host': os.getenv('POSTGRES_HOST'),
+    'user': os.getenv('POSTGRES_USER'),
+    'password': os.getenv('POSTGRES_PASSWORD'),
+    'dbname': os.getenv('POSTGRES_DB', 'Roznica'),
+    'port': os.getenv('POSTGRES_PORT', 5432)
 }
 
 # Column mappings (verified)
@@ -37,8 +39,8 @@ REVENUE_COL = '_Fld53732'  # Revenue
 QUANTITY_COL = '_Fld53731'  # Quantity
 RECORDER_REF = '_RecorderRRef'  # Document reference (for check count)
 
-# Date offset for 1C
-DATE_OFFSET_YEARS = 2000
+# Date offset for 1C (Postgres uses standard dates)
+DATE_OFFSET_YEARS = 0
 
 # Validation constants
 VALIDATION_STORE = 'Большевиков'
@@ -49,8 +51,8 @@ VALIDATION_TOLERANCE = 0.01  # 1%
 OUTPUT_FILE = 'LeaderTex_Sales_Dec2025.xlsx'
 
 # Period
-START_DATE_1C = '4025-12-01'
-END_DATE_1C = '4026-01-01'
+START_DATE_1C = '2025-12-01'
+END_DATE_1C = '2026-01-01'
 REPORT_MONTH = 'Декабрь 2025'
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -69,8 +71,8 @@ log = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def get_connection():
-    """Establish connection to MS SQL database."""
-    return pymssql.connect(**DB_CONFIG)
+    """Establish connection to PostgreSQL database."""
+    return psycopg2.connect(**DB_CONFIG)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -142,21 +144,7 @@ def transform_data(df: pd.DataFrame) -> pd.DataFrame:
     # 1. Convert dates (subtract 2000 years)
     # Handle 1C dates manually since they're in year 4025
     def convert_1c_date(dt_1c):
-        if pd.isna(dt_1c):
-            return None
-        try:
-            # Convert to string and parse
-            dt_str = str(dt_1c)
-            # Extract year and subtract 2000
-            if len(dt_str) >= 4:
-                year_1c = int(dt_str[:4])
-                year_real = year_1c - DATE_OFFSET_YEARS
-                # Reconstruct datetime
-                new_dt_str = str(year_real) + dt_str[4:]
-                return pd.to_datetime(new_dt_str)
-        except:
-            pass
-        return None
+        return pd.to_datetime(dt_1c)
     
     df['sale_date'] = df['sale_date_1c'].apply(convert_1c_date)
     
@@ -586,7 +574,7 @@ def main():
     except ValueError as e:
         log.error(f"Validation Error: {e}")
         return 1
-    except pymssql.Error as e:
+    except psycopg2.Error as e:
         log.error(f"Database Error: {e}")
         return 1
     except Exception as e:

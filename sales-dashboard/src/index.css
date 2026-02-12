@@ -144,6 +144,103 @@ body {
   box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
 }
 
+.kpi-table-container {
+  overflow-x: auto;
+  margin-bottom: 24px;
+  background: var(--bg-card);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.kpi-table {
+  display: grid;
+  min-width: 1000px;
+  /* Ensure horizontal scroll on small screens */
+  gap: 8px;
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: 180px repeat(7, 1fr);
+  /* 1 Label + 7 Data Columns */
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.kpi-row.header {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.kpi-row.total {
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.2), rgba(59, 130, 246, 0.1));
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.kpi-row.second {
+  background: rgba(168, 85, 247, 0.05);
+  /* border-left: 4px solid #a855f7; */
+}
+
+.kpi-row.new {
+  background: rgba(6, 182, 212, 0.05);
+  /* border-left: 4px solid #06b6d4; */
+}
+
+.kpi-cell {
+  display: flex;
+  align-items: center;
+}
+
+.kpi-cell.label {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.kpi-row.second .kpi-cell.label {
+  color: #a855f7;
+}
+
+.kpi-row.new .kpi-cell.label {
+  color: #06b6d4;
+}
+
+.kpi-row.total .kpi-cell.label {
+  color: #eff6ff;
+}
+
+.kpi-cell.value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.kpi-cell.dimmed {
+  opacity: 0.3;
+}
+
+/* Mobile optimizations for Grid in Table container */
+@media (max-width: 768px) {
+  .kpi-table-container {
+    padding: 8px;
+  }
+
+  .kpi-row {
+    padding: 10px;
+    gap: 12px;
+  }
+
+  .kpi-cell.value {
+    font-size: 1rem;
+  }
+}
+
 /* ========================================
    KPI CARDS
    ======================================== */
@@ -262,6 +359,17 @@ body {
 .kpi-value {
   font-size: 1.75rem;
   font-weight: 700;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 8px;
 }
 
 /* ========================================
@@ -426,20 +534,78 @@ body {
 
 @media (max-width: 768px) {
   .dashboard {
-    padding: 16px;
+    padding: 12px;
+  }
+
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .tab-controls {
+    width: 100%;
+    margin-left: 0 !important;
+    justify-content: space-between;
+  }
+
+  .tab-controls button {
+    flex: 1;
+    text-align: center;
   }
 
   .charts-grid {
     grid-template-columns: 1fr;
   }
 
+  /* Allow 2 columns for KPIs on mobile if screen permits, else 1 */
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .kpi-card {
+    padding: 16px;
+  }
+
+  .kpi-value {
+    font-size: 1.4rem;
+  }
+
+  .kpi-icon {
+    width: 36px;
+    height: 36px;
+    padding: 8px;
+  }
+
   .filters-bar {
     flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .apply-btn {
+    width: 100%;
+    margin-top: 8px;
   }
 
   .filter-group input,
   .filter-group select {
     min-width: 100%;
+  }
+
+  .table-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .pivot-controls {
+    width: 100%;
+  }
+
+  .pivot-controls select {
+    flex: 1;
   }
 }
 

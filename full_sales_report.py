@@ -5,14 +5,16 @@
 December 2025 - All stores with product breakdown
 """
 
-import pymssql
+import psycopg2
+import os
 from decimal import Decimal
 
 DB_CONFIG = {
-    'server': '100.126.198.90',
-    'user': 'ai_bot',
-    'password': 'A8Ew}Glc',
-    'database': 'Roznica'
+    'host': os.getenv('POSTGRES_HOST'),
+    'user': os.getenv('POSTGRES_USER'),
+    'password': os.getenv('POSTGRES_PASSWORD'),
+    'dbname': os.getenv('POSTGRES_DB', 'Roznica'),
+    'port': os.getenv('POSTGRES_PORT', 5432)
 }
 
 # Verified column mappings
@@ -22,7 +24,7 @@ QUANTITY_COL = '_Fld53731'       # Quantity
 
 
 def get_connection():
-    return pymssql.connect(**DB_CONFIG)
+    return psycopg2.connect(**DB_CONFIG)
 
 
 def find_nomenclature_ref_column(cursor):
@@ -44,7 +46,7 @@ def find_nomenclature_ref_column(cursor):
     
     # Get sample nomenclature IDs
     query = """
-    SELECT TOP 5 _IDRRef FROM _Reference387
+    SELECT _IDRRef FROM _Reference387 LIMIT 5
     """
     cursor.execute(query)
     nomen_ids = [r[0] for r in cursor.fetchall()]
@@ -63,7 +65,7 @@ def find_nomenclature_ref_column(cursor):
         SELECT COUNT(*) 
         FROM _AccumRg53715
         WHERE {col} IN ({placeholders})
-        AND _Period >= '4025-12-01' AND _Period < '4026-01-01'
+        AND _Period >= '2025-12-01' AND _Period < '2026-01-01'
         """
         try:
             cursor.execute(query, nomen_ids)
@@ -84,15 +86,16 @@ def test_nomenclature_join(cursor, nomen_col):
     print("=" * 70)
     
     query = f"""
-    SELECT TOP 10
+    SELECT
         n._Description AS Product,
         SUM(s.{QUANTITY_COL}) AS Qty,
         SUM(s.{REVENUE_COL}) AS Revenue
     FROM _AccumRg53715 s
     LEFT JOIN _Reference387 n ON s.{nomen_col} = n._IDRRef
-    WHERE s._Period >= '4025-12-01' AND s._Period < '4026-01-01'
+    WHERE s._Period >= '2025-12-01' AND s._Period < '2026-01-01'
     GROUP BY n._Description
     ORDER BY Revenue DESC
+    LIMIT 10
     """
     
     cursor.execute(query)
@@ -122,7 +125,7 @@ def generate_full_report(cursor, nomen_col):
     FROM _AccumRg53715 s
     INNER JOIN _Reference640 w ON s.{WAREHOUSE_REF} = w._IDRRef
     LEFT JOIN _Reference387 n ON s.{nomen_col} = n._IDRRef
-    WHERE s._Period >= '4025-12-01' AND s._Period < '4026-01-01'
+    WHERE s._Period >= '2025-12-01' AND s._Period < '2026-01-01'
     GROUP BY w._Description, n._Description
     ORDER BY w._Description, Revenue DESC
     """
@@ -216,7 +219,7 @@ def verify_totals(cursor, nomen_col):
         SUM(s.{REVENUE_COL}) AS Revenue
     FROM _AccumRg53715 s
     INNER JOIN _Reference640 w ON s.{WAREHOUSE_REF} = w._IDRRef
-    WHERE s._Period >= '4025-12-01' AND s._Period < '4026-01-01'
+    WHERE s._Period >= '2025-12-01' AND s._Period < '2026-01-01'
     GROUP BY w._Description
     ORDER BY w._Description
     """
@@ -273,14 +276,15 @@ def main():
         for col in ['_Fld53718RRef', '_Fld53719_RRRef', '_Fld53720RRef', '_Fld53716RRef']:
             try:
                 query = f"""
-                SELECT TOP 5
+                SELECT
                     n._Description AS Product,
                     SUM(s.{QUANTITY_COL}) AS Qty
                 FROM _AccumRg53715 s
                 LEFT JOIN _Reference387 n ON s.{col} = n._IDRRef
-                WHERE s._Period >= '4025-12-01' AND s._Period < '4026-01-01'
+                WHERE s._Period >= '2025-12-01' AND s._Period < '2026-01-01'
                 AND n._Description IS NOT NULL
                 GROUP BY n._Description
+                LIMIT 5
                 """
                 cursor.execute(query)
                 rows = cursor.fetchall()

@@ -1,32 +1,27 @@
-#!/usr/bin/env python3
-"""
-═══════════════════════════════════════════════════════════════════════════════
-LiderTeks 1C → Supabase Sales Sync
-═══════════════════════════════════════════════════════════════════════════════
-Extracts ALL sales data from 1C MS SQL and uploads to Supabase for analytics
+import sys
+print("DEBUG: Script initialized...", flush=True)
 
-Author: Antigravity
-Date: 2026-01-15
-═══════════════════════════════════════════════════════════════════════════════
-"""
-
-import pymssql
 import requests
 import json
 import logging
+import os
 from datetime import datetime
 from decimal import Decimal
+import psycopg2
+
+print("DEBUG: Imports complete.", flush=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# 1C MS SQL Database
+# 1C PostgreSQL Database
 DB_CONFIG = {
-    'server': '100.126.198.90',
-    'user': 'ai_bot',
-    'password': 'A8Ew}Glc',
-    'database': 'Roznica'
+    'host': os.getenv('POSTGRES_HOST'),
+    'user': os.getenv('POSTGRES_USER'),
+    'password': os.getenv('POSTGRES_PASSWORD'),
+    'dbname': os.getenv('POSTGRES_DB', 'Roznica'),
+    'port': os.getenv('POSTGRES_PORT', 5432)
 }
 
 # Supabase
@@ -40,11 +35,14 @@ REVENUE_COL = '_Fld53732'
 QUANTITY_COL = '_Fld53731'
 RECORDER_REF = '_RecorderRRef'
 
-# Date offset
-DATE_OFFSET_YEARS = 2000
-
 # Batch size for Supabase inserts
 BATCH_SIZE = 500
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, Decimal):
+            return float(o)
+        return super(DecimalEncoder, self).default(o)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LOGGING
@@ -53,7 +51,8 @@ BATCH_SIZE = 500
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
-    datefmt='%H:%M:%S'
+    datefmt='%H:%M:%S',
+    stream=sys.stdout
 )
 log = logging.getLogger(__name__)
 
@@ -61,8 +60,9 @@ log = logging.getLogger(__name__)
 # DATABASE CONNECTION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def get_1c_connection():
-    return pymssql.connect(**DB_CONFIG)
+def get_db_connection():
+    """Establish connection to PostgreSQL database."""
+    return psycopg2.connect(**DB_CONFIG)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -71,8 +71,9 @@ def get_1c_connection():
 
 def extract_all_sales(cursor):
     """Extract ALL sales data from 1C database."""
-    log.info("Extracting ALL sales data from 1C...")
+    log.info("Extracting sales data (Since Jan 1 2026)...")
     
+    # Using encode(..., 'hex') to get readable strings for ID generation
     query = f"""
     SELECT 
         s._Period AS sale_date_1c,
@@ -82,13 +83,14 @@ def extract_all_sales(cursor):
         u._Description AS unit,
         s.{QUANTITY_COL} AS quantity,
         s.{REVENUE_COL} AS revenue,
-        CONVERT(VARCHAR(50), s.{RECORDER_REF}, 2) AS recorder_id,
+        encode(s.{RECORDER_REF}, 'hex') AS recorder_id_hex,
         s._LineNo AS line_number
     FROM _AccumRg53715 s
     INNER JOIN _Reference640 w ON s.{WAREHOUSE_REF} = w._IDRRef
     LEFT JOIN _Reference640 m ON w._ParentIDRRef = m._IDRRef
     LEFT JOIN _Reference387 n ON s.{NOMENCLATURE_REF} = n._IDRRef
     LEFT JOIN _Reference188 u ON n._Fld9817RRef = u._IDRRef
+    WHERE s._Period >= '2026-01-01 00:00:00'
     ORDER BY s._Period
     """
     
@@ -97,22 +99,6 @@ def extract_all_sales(cursor):
     log.info(f"Fetched {len(rows):,} total sales records")
     
     return rows
-
-
-def convert_1c_date(dt_1c):
-    """Convert 1C date (with +2000 year offset) to real date."""
-    if dt_1c is None:
-        return None
-    try:
-        dt_str = str(dt_1c)
-        if len(dt_str) >= 4:
-            year_1c = int(dt_str[:4])
-            year_real = year_1c - DATE_OFFSET_YEARS
-            new_dt_str = str(year_real) + dt_str[4:]
-            return datetime.strptime(new_dt_str[:10], '%Y-%m-%d').date()
-    except:
-        pass
-    return None
 
 
 def extract_product_group(product_name):
@@ -152,12 +138,11 @@ def get_unit_type(unit):
 
 def transform_row(row):
     """Transform a raw database row into Supabase record format."""
-    sale_date_1c, warehouse, store, product, unit, quantity, revenue, recorder_id, line_number = row
+    sale_date, warehouse, store, product, unit, quantity, revenue, recorder_id_hex, line_number = row
     
-    sale_date = convert_1c_date(sale_date_1c)
     if not sale_date:
         return None
-    
+        
     # Handle None store
     store = store if store else warehouse
     if not store:
@@ -170,7 +155,7 @@ def transform_row(row):
     revenue = float(revenue) if revenue else 0
     
     # Create unique ID using recorder_id + line_number
-    unique_id = f"{recorder_id}_{line_number}"
+    unique_id = f"{recorder_id_hex}_{line_number}"
     
     return {
         'sale_date': sale_date.isoformat(),
@@ -200,6 +185,7 @@ def transform_row(row):
 
 def upload_to_supabase(records):
     """Upload records to Supabase in batches using UPSERT."""
+    print(f"DEBUG: Starting upload of {len(records)} records...", flush=True)
     log.info(f"Uploading {len(records):,} records to Supabase (UPSERT)...")
     
     headers = {
@@ -209,7 +195,6 @@ def upload_to_supabase(records):
         'Prefer': 'resolution=merge-duplicates' # Handles duplicates by updating
     }
     
-    # on_conflict=recorder_id is handled by resolution=merge-duplicates if unique constraint exists
     url = f"{SUPABASE_URL}/rest/v1/sales_analytics?on_conflict=recorder_id"
     
     total_uploaded = 0
@@ -219,7 +204,11 @@ def upload_to_supabase(records):
         batch = records[i:i + BATCH_SIZE]
         
         try:
-            response = requests.post(url, headers=headers, json=batch)
+            response = requests.post(
+                url, 
+                headers=headers, 
+                data=json.dumps(batch, cls=DecimalEncoder)
+            )
             
             if response.status_code in [200, 201]:
                 total_uploaded += len(batch)
@@ -244,18 +233,27 @@ def upload_to_supabase(records):
 def main():
     print()
     print("═" * 70)
-    print("  LiderTeks 1C → Supabase Sales Sync")
+    print("  LiderTeks 1C → Supabase Sales Sync (Postgres)")
     print("═" * 70)
     print()
     
-    # Connect to 1C
-    log.info("Connecting to 1C MS SQL...")
-    conn = get_1c_connection()
-    cursor = conn.cursor()
-    log.info("✅ Connected to 1C")
+    # Connect to PostgreSQL
+    log.info("Connecting to PostgreSQL...")
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        log.info("✅ Connected")
+    except Exception as e:
+        log.error(f"Failed to connect: {e}")
+        return 1
     
     # Extract all sales
-    rows = extract_all_sales(cursor)
+    try:
+        rows = extract_all_sales(cursor)
+    except Exception as e:
+        log.error(f"Extraction failed: {e}")
+        if conn: conn.close()
+        return 1
     
     # Transform data
     log.info("Transforming data...")
@@ -271,13 +269,15 @@ def main():
     
     log.info(f"Transformed {len(records):,} records ({skipped} skipped)")
     
-    # Close 1C connection
+    # Close connection
     cursor.close()
     conn.close()
-    log.info("🔌 Disconnected from 1C")
+    
+    if not records:
+        log.info("No records to sync.")
+        return 0
     
     # Upload to Supabase (UPSERT)
-    # Dedup records by recorder_id to avoid batch conflicts
     log.info(f"Deduplicating {len(records):,} records...")
     unique_map = {}
     for r in records:
@@ -286,7 +286,7 @@ def main():
     deduped_records = list(unique_map.values())
     log.info(f"Unique records: {len(deduped_records):,} (removed {len(records) - len(deduped_records)} duplicates)")
 
-    uploaded = upload_to_supabase(deduped_records)
+    upload_to_supabase(deduped_records)
     
     # Summary
     print()
@@ -294,30 +294,8 @@ def main():
     log.info("SYNC COMPLETE")
     print("═" * 70)
     
-    # Get date range
-    dates = [r['sale_date'] for r in records]
-    min_date = min(dates) if dates else 'N/A'
-    max_date = max(dates) if dates else 'N/A'
-    
-    # Get unique counts
-    stores = set(r['store'] for r in records)
-    groups = set(r['product_group'] for r in records)
-    
-    total_revenue = sum(r['revenue'] for r in records)
-    total_kg = sum(r['quantity_kg'] for r in records)
-    total_pcs = sum(r['quantity_pcs'] for r in records)
-    
-    log.info(f"Период данных:     {min_date} — {max_date}")
-    log.info(f"Всего записей:     {len(records):,}")
-    log.info(f"Магазинов:         {len(stores)}")
-    log.info(f"Товарных групп:    {len(groups)}")
-    log.info(f"Общая выручка:     {total_revenue:,.2f} ₽")
-    log.info(f"Всего кг:          {total_kg:,.2f}")
-    log.info(f"Всего шт:          {total_pcs:,.0f}")
-    log.info(f"Supabase URL:      {SUPABASE_URL}")
-    
     return 0
 
 
 if __name__ == "__main__":
-    exit(main())
+    main()

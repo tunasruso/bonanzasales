@@ -6,9 +6,9 @@ import {
 } from 'recharts';
 import {
   TrendingUp, Package, Weight, ShoppingCart, Receipt,
-  Calendar, Store, Filter, ArrowUpDown, RefreshCw
+  Calendar, Store, Filter, ArrowUpDown, RefreshCw, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { fetchSalesData, fetchDistinctValues, fetchKPIs, fetchInventory, type SalesRecord, type InventoryRecord } from './lib/supabase';
+import { fetchSalesData, fetchDistinctValues, fetchKPIs, fetchInventory, calculateEstimatedWeight, supabase, type SalesRecord, type InventoryRecord } from './lib/supabase';
 import Login from './components/Login';
 import './index.css';
 
@@ -86,9 +86,11 @@ export default function App() {
   // Data state
   const [salesData, setSalesData] = useState<SalesRecord[]>([]);
   const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
+  const [productWeights, setProductWeights] = useState<any[]>([]);
   const [kpis, setKpis] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showFilters, setShowFilters] = useState(window.innerWidth > 768);
 
   // Pivot state
   const [rowDimension, setRowDimension] = useState('store');
@@ -97,17 +99,19 @@ export default function App() {
 
   // Load initial data
   useEffect(() => {
-    async function loadFilters() {
-      const [storeList, groupList, prodList] = await Promise.all([
+    async function loadDataAndFilters() {
+      const [storeList, groupList, prodList, weightsList] = await Promise.all([
         fetchDistinctValues('store'),
         fetchDistinctValues('product_group'),
-        fetchDistinctValues('product')
+        fetchDistinctValues('product'),
+        supabase.from('product_weights').select('*')
       ]);
       setStores(storeList);
       setProductGroups(groupList);
       setProductsList(prodList);
+      if (weightsList.data) setProductWeights(weightsList.data);
     }
-    loadFilters();
+    loadDataAndFilters();
   }, []);
 
   // Load sales and inventory data
@@ -167,11 +171,15 @@ export default function App() {
         key = `${monthName} ${record.year}`;
       }
 
+      // Calculate weight (Priority: Calculated > 1C Data)
+      const estimatedKg = calculateEstimatedWeight(record, productWeights);
+      const rowKg = estimatedKg > 0 ? estimatedKg : Number(record.quantity_kg);
+
       const existing = grouped.get(key) || { revenue: 0, kg: 0, pcs: 0, count: 0, stock: 0 };
       grouped.set(key, {
         ...existing,
         revenue: existing.revenue + Number(record.revenue),
-        kg: existing.kg + Number(record.quantity_kg),
+        kg: existing.kg + rowKg,
         pcs: existing.pcs + Number(record.quantity_pcs),
         count: existing.count + 1
       });
@@ -294,9 +302,13 @@ export default function App() {
     salesData.forEach(record => {
       const monthKey = `${record.year}-${String(record.month).padStart(2, '0')}`;
       const existing = grouped.get(monthKey) || { revenue: 0, kg: 0, pcs: 0 };
+
+      const estimatedKg = calculateEstimatedWeight(record, productWeights);
+      const rowKg = estimatedKg > 0 ? estimatedKg : Number(record.quantity_kg);
+
       grouped.set(monthKey, {
         revenue: existing.revenue + Number(record.revenue),
-        kg: existing.kg + Number(record.quantity_kg),
+        kg: existing.kg + rowKg,
         pcs: existing.pcs + Number(record.quantity_pcs)
       });
     });
@@ -309,7 +321,7 @@ export default function App() {
         kg: values.kg,
         pcs: values.pcs
       }));
-  }, [salesData]);
+  }, [salesData, productWeights]);
 
   // Pie chart data
   const pieData = useMemo(() => {
@@ -388,67 +400,98 @@ export default function App() {
       </header>
 
       {/* Filters */}
-      <div className="filters-bar">
-        {activeTab === 'dashboard' && (
-          <>
-            <div className="filter-group">
-              <label><Calendar size={12} /> Начало</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-              />
-            </div>
-            <div className="filter-group">
-              <label><Calendar size={12} /> Конец</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-              />
-            </div>
-          </>
-        )}
-        <div className="filter-group">
-          <label><Store size={12} /> Магазин</label>
-          <select
-            value={selectedStores[0] || ''}
-            onChange={e => setSelectedStores(e.target.value ? [e.target.value] : [])}
-          >
-            <option value="">Все магазины</option>
-            {stores.map(store => (
-              <option key={store} value={store}>{store}</option>
-            ))}
-          </select>
-        </div>
-        <div className="filter-group">
-          <select
-            value={selectedGroups[0] || ''}
-            onChange={e => setSelectedGroups(e.target.value ? [e.target.value] : [])}
-          >
-            <option value="">Все группы</option>
-            {productGroups.map(group => (
-              <option key={group} value={group}>{group}</option>
-            ))}
-          </select>
-        </div>
-        <div className="filter-group">
-          <label><Package size={12} /> Номенклатура</label>
-          <select
-            value={selectedProducts[0] || ''}
-            onChange={e => setSelectedProducts(e.target.value ? [e.target.value] : [])}
-            style={{ maxWidth: '200px' }}
-          >
-            <option value="">Вся номенклатура</option>
-            {productsList.map(prod => (
-              <option key={prod} value={prod}>{prod.length > 30 ? prod.substring(0, 30) + '...' : prod}</option>
-            ))}
-          </select>
-        </div>
-        <button className="apply-btn" onClick={loadData}>
-          <Filter size={16} style={{ marginRight: 8 }} />
-          Применить
+      {/* Collapsible Filters */}
+      <div className="filters-container" style={{ marginBottom: 32 }}>
+        <button
+          className="filter-toggle-btn"
+          onClick={() => setShowFilters(!showFilters)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 16px',
+            background: 'var(--bg-card)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '12px',
+            color: 'var(--text-primary)',
+            cursor: 'pointer',
+            marginBottom: showFilters ? 16 : 0,
+            width: '100%',
+            justifyContent: 'space-between'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Filter size={18} />
+            <span>Фильтры</span>
+          </div>
+          {showFilters ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
         </button>
+
+        {showFilters && (
+          <div className="filters-bar" style={{ marginBottom: 0 }}>
+            {activeTab === 'dashboard' && (
+              <div className="filter-group">
+                <label>Период</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                  />
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="filter-group">
+              <label>Магазин</label>
+              <select
+                value={selectedStores[0] || ''}
+                onChange={e => setSelectedStores(e.target.value ? [e.target.value] : [])}
+              >
+                <option value="">Все магазины</option>
+                {stores.map(store => (
+                  <option key={store} value={store}>{store}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="filter-group">
+              <label>Товарная группа</label>
+              <select
+                value={selectedGroups[0] || ''}
+                onChange={e => setSelectedGroups(e.target.value ? [e.target.value] : [])}
+              >
+                <option value="">Все группы</option>
+                {productGroups.map(group => (
+                  <option key={group} value={group}>{group}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="filter-group">
+              <label>Номенклатура</label>
+              <select
+                value={selectedProducts[0] || ''}
+                onChange={e => setSelectedProducts(e.target.value ? [e.target.value] : [])}
+                style={{ maxWidth: '200px' }}
+              >
+                <option value="">Вся номенклатура</option>
+                {productsList.map(prod => (
+                  <option key={prod} value={prod}>{prod.length > 30 ? prod.substring(0, 30) + '...' : prod}</option>
+                ))}
+              </select>
+            </div>
+            <button className="apply-btn" onClick={loadData}>
+              <RefreshCw size={16} style={{ marginRight: 8 }} />
+              Применить
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -461,31 +504,55 @@ export default function App() {
           {activeTab === 'dashboard' ? (
             <>
               {/* KPI Cards */}
-              <div className="kpi-grid">
-                <div className="kpi-card blue">
-                  <div className="kpi-icon"><TrendingUp size={24} /></div>
-                  <div className="kpi-label">Выручка</div>
-                  <div className="kpi-value">{formatCurrency(kpis?.totalRevenue || 0)}</div>
-                </div>
-                <div className="kpi-card green">
-                  <div className="kpi-icon"><Weight size={24} /></div>
-                  <div className="kpi-label">Продано (кг)</div>
-                  <div className="kpi-value">{formatNumber(kpis?.totalKg || 0, 0)} кг</div>
-                </div>
-                <div className="kpi-card purple">
-                  <div className="kpi-icon"><Package size={24} /></div>
-                  <div className="kpi-label">Продано (шт)</div>
-                  <div className="kpi-value">{formatNumber(kpis?.totalPcs || 0)} шт</div>
-                </div>
-                <div className="kpi-card pink">
-                  <div className="kpi-icon"><ShoppingCart size={24} /></div>
-                  <div className="kpi-label">Чеков</div>
-                  <div className="kpi-value">{formatNumber(kpis?.uniqueChecks || 0)}</div>
-                </div>
-                <div className="kpi-card orange">
-                  <div className="kpi-icon"><Receipt size={24} /></div>
-                  <div className="kpi-label">Средний чек</div>
-                  <div className="kpi-value">{formatCurrency(kpis?.avgCheck || 0)}</div>
+              <div className="kpi-table-container">
+                <div className="kpi-table">
+                  {/* Header */}
+                  <div className="kpi-row header">
+                    <div className="kpi-cell label">Категория</div>
+                    <div className="kpi-cell"><TrendingUp size={16} style={{ marginRight: 4 }} /> Выручка</div>
+                    <div className="kpi-cell"><Weight size={16} style={{ marginRight: 4 }} /> Вес (кг)</div>
+                    <div className="kpi-cell"><Package size={16} style={{ marginRight: 4 }} /> Шт</div>
+                    <div className="kpi-cell"><ShoppingCart size={16} style={{ marginRight: 4 }} /> Чеков</div>
+                    <div className="kpi-cell"><Package size={16} style={{ marginRight: 4 }} /> Позиций</div>
+                    <div className="kpi-cell"><Receipt size={16} style={{ marginRight: 4 }} /> Ср. чек</div>
+                    <div className="kpi-cell"><TrendingUp size={16} style={{ marginRight: 4 }} /> Цена/кг</div>
+                  </div>
+
+                  {/* Row 1: TOTAL */}
+                  <div className="kpi-row total">
+                    <div className="kpi-cell label">ИТОГО</div>
+                    <div className="kpi-cell value">{formatCurrency(kpis?.total?.revenue || 0)}</div>
+                    <div className="kpi-cell value">{formatNumber(kpis?.total?.kg || 0, 2)}</div>
+                    <div className="kpi-cell value">{formatNumber(kpis?.total?.pcs || 0)}</div>
+                    <div className="kpi-cell value">{formatNumber(kpis?.total?.checks || 0)}</div>
+                    <div className="kpi-cell value">{formatNumber(kpis?.total?.positions || 0)}</div>
+                    <div className="kpi-cell value">{formatCurrency(kpis?.total?.avgCheck || 0)}</div>
+                    <div className="kpi-cell value">{formatCurrency(kpis?.total?.pricePerKg || 0)}</div>
+                  </div>
+
+                  {/* Row 2: SECOND */}
+                  <div className="kpi-row second">
+                    <div className="kpi-cell label">СЕКОНД</div>
+                    <div className="kpi-cell value">{formatCurrency(kpis?.second?.revenue || 0)}</div>
+                    <div className="kpi-cell value">{formatNumber(kpis?.second?.kg || 0, 2)}</div>
+                    <div className="kpi-cell value">{formatNumber(kpis?.second?.pcs || 0)}</div>
+                    <div className="kpi-cell value">{formatNumber(kpis?.second?.checks || 0)}</div>
+                    <div className="kpi-cell value">{formatNumber(kpis?.second?.positions || 0)}</div>
+                    <div className="kpi-cell value">{formatCurrency(kpis?.second?.avgCheck || 0)}</div>
+                    <div className="kpi-cell value">{formatCurrency(kpis?.second?.pricePerKg || 0)}</div>
+                  </div>
+
+                  {/* Row 3: NEW */}
+                  <div className="kpi-row new">
+                    <div className="kpi-cell label">НОВЫЙ</div>
+                    <div className="kpi-cell value">{formatCurrency(kpis?.newGoods?.revenue || 0)}</div>
+                    <div className="kpi-cell value dimmed">—</div>
+                    <div className="kpi-cell value">{formatNumber(kpis?.newGoods?.pcs || 0)}</div>
+                    <div className="kpi-cell value">{formatNumber(kpis?.newGoods?.checks || 0)}</div>
+                    <div className="kpi-cell value">{formatNumber(kpis?.newGoods?.positions || 0)}</div>
+                    <div className="kpi-cell value">{formatCurrency(kpis?.newGoods?.avgCheck || 0)}</div>
+                    <div className="kpi-cell value dimmed">—</div>
+                  </div>
                 </div>
               </div>
 
@@ -634,7 +701,7 @@ export default function App() {
                               {row.stock ? formatNumber(row.stock, 0) : '-'}
                             </td>
                           )}
-                          <td className="number kg">{formatNumber(row.kg, 0)} кг</td>
+                          <td className="number kg">{formatNumber(row.kg, 2)} кг</td>
                           <td className="number pcs">{formatNumber(row.pcs)} шт</td>
                           <td className="number">{formatNumber(row.transactions)}</td>
                         </tr>
