@@ -208,6 +208,8 @@ export interface ShopDetailedKPI {
   second: DetailedKPI;
   aPlus: DetailedKPI;
   bedding: DetailedKPI;
+  revenueGrowth: number;
+  totalPastRevenue: number;
 }
 
 export async function fetchShopDetailedKPIs(
@@ -215,6 +217,17 @@ export async function fetchShopDetailedKPIs(
   endDate: string,
   stores?: string[]
 ) {
+  // Calculate Comparable Period (one month before)
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const prevStart = new Date(start);
+  prevStart.setMonth(prevStart.getMonth() - 1);
+  const prevEnd = new Date(end);
+  prevEnd.setMonth(prevEnd.getMonth() - 1);
+
+  const formattedPrevStart = prevStart.toISOString().split('T')[0];
+  const formattedPrevEnd = prevEnd.toISOString().split('T')[0];
+
   let query = supabase
     .from('sales_analytics')
     .select('revenue, quantity_kg, quantity_pcs, recorder_id, store, product_group, product')
@@ -223,12 +236,31 @@ export async function fetchShopDetailedKPIs(
 
   if (stores && stores.length > 0) query = query.in('store', stores);
 
+  let prevQuery = supabase
+    .from('sales_analytics')
+    .select('revenue, store')
+    .gte('sale_date', formattedPrevStart)
+    .lte('sale_date', formattedPrevEnd);
+
+  if (stores && stores.length > 0) prevQuery = prevQuery.in('store', stores);
+
   try {
-    const data = await fetchAll(query);
+    const [data, prevData] = await Promise.all([
+      fetchAll(query),
+      fetchAll(prevQuery)
+    ]);
+
     if (!data) return [];
 
     const weights = await fetchProductWeights();
     const shopsMap = new Map<string, { store: string, total: AccumulatorDetailedKPI, second: AccumulatorDetailedKPI, aPlus: AccumulatorDetailedKPI, bedding: AccumulatorDetailedKPI }>();
+    const prevShopsRevenue = new Map<string, number>();
+
+    // Sum up previous period revenue
+    prevData.forEach((r: any) => {
+      const sName = r.store || 'Unknown';
+      prevShopsRevenue.set(sName, (prevShopsRevenue.get(sName) || 0) + Number(r.revenue));
+    });
 
     const getEmptyDetailed = (): AccumulatorDetailedKPI => ({ revenue: 0, kg: 0, pcs: 0, checks: new Set<string>() });
 
@@ -287,13 +319,24 @@ export async function fetchShopDetailedKPIs(
       }
     });
 
-    return Array.from(shopsMap.values()).map(s => ({
-      ...s,
-      total: { ...s.total, checks: s.total.checks.size },
-      second: { ...s.second, checks: s.second.checks.size },
-      aPlus: { ...s.aPlus, checks: s.aPlus.checks.size },
-      bedding: { ...s.bedding, checks: s.bedding.checks.size }
-    })) as ShopDetailedKPI[];
+    return Array.from(shopsMap.values()).map(s => {
+      const currentRev = s.total.revenue;
+      const pastRev = prevShopsRevenue.get(s.store) || 0;
+      let growth = 0;
+      if (pastRev > 0) {
+        growth = ((currentRev / pastRev) - 1) * 100;
+      }
+
+      return {
+        ...s,
+        total: { ...s.total, checks: s.total.checks.size },
+        second: { ...s.second, checks: s.second.checks.size },
+        aPlus: { ...s.aPlus, checks: s.aPlus.checks.size },
+        bedding: { ...s.bedding, checks: s.bedding.checks.size },
+        revenueGrowth: growth,
+        totalPastRevenue: pastRev
+      };
+    }) as ShopDetailedKPI[];
   } catch (error) {
     console.error('Error fetching shop detailed KPIs:', error);
     return [];

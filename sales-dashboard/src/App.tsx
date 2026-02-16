@@ -707,7 +707,9 @@ export default function App() {
                           <td className="sticky-col font-bold">{row.store}</td>
                           {/* Итого */}
                           <td className="number">{formatCurrency(row.total.revenue)}</td>
-                          <td className="number dimmed">0%</td>
+                          <td className={`number ${row.revenueGrowth > 0 ? 'growth-up' : row.revenueGrowth < 0 ? 'growth-down' : 'dimmed'}`}>
+                            {row.revenueGrowth > 0 ? '+' : ''}{formatNumber(row.revenueGrowth, 1)}%
+                          </td>
                           {/* Секонд */}
                           <td className="number">{formatCurrency(row.second.revenue)}</td>
                           <td className="number">{formatNumber(row.second.kg, 1)}</td>
@@ -740,7 +742,20 @@ export default function App() {
                       <tr className="summary-row">
                         <td className="sticky-col">ИТОГО ВСЕГО</td>
                         <td className="number">{formatCurrency(shopKPIs.reduce((acc, r) => acc + r.total.revenue, 0))}</td>
-                        <td className="number dimmed">0%</td>
+                        <td className={`number ${(() => {
+                            const totalCurr = shopKPIs.reduce((acc, r) => acc + r.total.revenue, 0);
+                            const totalPast = shopKPIs.reduce((acc, r) => acc + r.totalPastRevenue, 0);
+                            const totalGrowth = totalPast > 0 ? ((totalCurr / totalPast) - 1) * 100 : 0;
+                            return totalGrowth > 0 ? 'growth-up' : totalGrowth < 0 ? 'growth-down' : 'dimmed';
+                          })()
+                          }`}>
+                          {(() => {
+                            const totalCurr = shopKPIs.reduce((acc, r) => acc + r.total.revenue, 0);
+                            const totalPast = shopKPIs.reduce((acc, r) => acc + r.totalPastRevenue, 0);
+                            const totalGrowth = totalPast > 0 ? ((totalCurr / totalPast) - 1) * 100 : 0;
+                            return (totalGrowth > 0 ? '+' : '') + formatNumber(totalGrowth, 1) + '%';
+                          })()}
+                        </td>
                         <td className="number">{formatCurrency(shopKPIs.reduce((acc, r) => acc + r.second.revenue, 0))}</td>
                         <td className="number">{formatNumber(shopKPIs.reduce((acc, r) => acc + r.second.kg, 0), 1)}</td>
                         <td className="number">

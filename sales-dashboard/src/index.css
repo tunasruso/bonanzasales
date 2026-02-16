@@ -51,6 +51,14 @@ body {
     var(--bg-primary);
 }
 
+.growth-up {
+  color: var(--accent-green) !important;
+}
+
+.growth-down {
+  color: #ef4444 !important;
+}
+
 .dashboard-header {
   display: flex;
   justify-content: space-between;
