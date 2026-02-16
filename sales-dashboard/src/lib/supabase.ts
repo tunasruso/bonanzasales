@@ -123,12 +123,17 @@ export interface ProductWeight {
 }
 
 // Helper: Get weight AND category
-export function getProductCategoryAndWeight(record: any, weights: ProductWeight[]): { weight: number, category: 'new' | 'second' } {
+export function getProductCategoryAndWeight(record: any, weights: ProductWeight[]): {
+  weight: number,
+  category: 'new' | 'second',
+  isAPlus: boolean,
+  isBedding: boolean
+} {
   const pGroup = record.product_group || '';
   const pName = record.product || '';
   const qty = Number(record.quantity_pcs || record.quantity);
 
-  // Default to 'second' if no rule found (as per instructions: "Everything else is Second")
+  // Default to 'second' if no rule found
   let category: 'new' | 'second' = 'second';
   let avgWeight = 0;
 
@@ -160,65 +165,88 @@ export function getProductCategoryAndWeight(record: any, weights: ProductWeight[
     avgWeight = Number(match.avg_weight_kg);
   }
 
+  // Detection of specific subcategories for detailed report
+  const isAPlus = (pName.includes('A+') || pName.includes('А+'));
+  const isBedding = (pGroup === 'КПБ' || pGroup.includes('КПБ') || pName.includes('КПБ'));
+
   // Calculate total weight for this line
-  // If New -> Weight is 0 (User requirement: "БЕЗ килограммов")
   if (category === 'new') {
-    return { weight: 0, category: 'new' };
+    return { weight: 0, category: 'new', isAPlus, isBedding };
   }
 
-  // If Second -> Use calculated if rule exists, else 0 (caller handles fallback to 1C)
-  // Wait, if match found -> return calculated.
-  // If NO match -> return 0 (caller handles fallback).
   let calculated = 0;
   if (match && qty) {
     calculated = qty * avgWeight;
   }
 
-  return { weight: calculated, category };
+  return { weight: calculated, category, isAPlus, isBedding };
 }
 
-// Kept for backward compatibility if needed, but wrapper around above
+// Kept for backward compatibility
 export function calculateEstimatedWeight(record: any, weights: ProductWeight[]): number {
   return getProductCategoryAndWeight(record, weights).weight;
 }
 
-export async function fetchKPIs(
+// In-process accumulation interface
+interface AccumulatorDetailedKPI {
+  revenue: number;
+  kg: number;
+  pcs: number;
+  checks: Set<string>;
+}
+
+export interface DetailedKPI {
+  revenue: number;
+  kg: number;
+  pcs: number;
+  checks: number; // Final result is size
+}
+
+export interface ShopDetailedKPI {
+  store: string;
+  total: DetailedKPI;
+  second: DetailedKPI;
+  aPlus: DetailedKPI;
+  bedding: DetailedKPI;
+}
+
+export async function fetchShopDetailedKPIs(
   startDate: string,
   endDate: string,
-  stores?: string[],
-  productGroups?: string[],
-  products?: string[]
+  stores?: string[]
 ) {
-  // ... (Query logic same as before)
   let query = supabase
     .from('sales_analytics')
-    .select('revenue, quantity_kg, quantity_pcs, recorder_id, store, product_group, product') // Added product for matching
+    .select('revenue, quantity_kg, quantity_pcs, recorder_id, store, product_group, product')
     .gte('sale_date', startDate)
     .lte('sale_date', endDate);
 
   if (stores && stores.length > 0) query = query.in('store', stores);
-  if (productGroups && productGroups.length > 0) query = query.in('product_group', productGroups);
-  if (products && products.length > 0) query = query.in('product', products);
 
   try {
-    const data = await fetchAll(query); // Use fetchAll
-    if (!data) return null;
+    const data = await fetchAll(query);
+    if (!data) return [];
 
-    // Fetch weights
-    const wRes = await supabase.from('product_weights').select('*');
-    const weights = (wRes.data || []) as ProductWeight[];
+    const weights = await fetchProductWeights();
+    const shopsMap = new Map<string, { store: string, total: AccumulatorDetailedKPI, second: AccumulatorDetailedKPI, aPlus: AccumulatorDetailedKPI, bedding: AccumulatorDetailedKPI }>();
 
-    // Initialize accumulators
-    const total = { revenue: 0, kg: 0, pcs: 0, checks: new Set<string>(), positions: 0 };
-    const second = { revenue: 0, kg: 0, pcs: 0, checks: new Set<string>(), positions: 0 }; // Only checks containing second?
-    const newGoods = { revenue: 0, kg: 0, pcs: 0, checks: new Set<string>(), positions: 0 };
+    const getEmptyDetailed = (): AccumulatorDetailedKPI => ({ revenue: 0, kg: 0, pcs: 0, checks: new Set<string>() });
 
     data.forEach((r: any) => {
-      const { weight: calculatedWeight, category } = getProductCategoryAndWeight(r, weights);
+      const storeName = r.store || 'Unknown';
+      if (!shopsMap.has(storeName)) {
+        shopsMap.set(storeName, {
+          store: storeName,
+          total: getEmptyDetailed(),
+          second: getEmptyDetailed(),
+          aPlus: getEmptyDetailed(),
+          bedding: getEmptyDetailed()
+        });
+      }
 
-      // Determine effective KG
-      // If New -> 0
-      // If Second -> calculated OR 1C
+      const shop = shopsMap.get(storeName)!;
+      const { weight: calculatedWeight, category, isAPlus, isBedding } = getProductCategoryAndWeight(r, weights);
+
       let rowKg = 0;
       if (category === 'second') {
         rowKg = calculatedWeight > 0 ? calculatedWeight : Number(r.quantity_kg);
@@ -228,23 +256,103 @@ export async function fetchKPIs(
       const rowPcs = Number(r.quantity_pcs);
       const checkId = r.recorder_id ? (r.recorder_id.includes('_') ? r.recorder_id.split('_')[0] : r.recorder_id) : null;
 
-      // Update Totals
+      // Update TOTAL
+      shop.total.revenue += rowRev;
+      shop.total.kg += rowKg;
+      shop.total.pcs += rowPcs;
+      if (checkId) shop.total.checks.add(checkId);
+
+      // Update SECOND
+      if (category === 'second') {
+        shop.second.revenue += rowRev;
+        shop.second.kg += rowKg;
+        shop.second.pcs += rowPcs;
+        if (checkId) shop.second.checks.add(checkId);
+      }
+
+      // Update A+ (Subcategory of Second)
+      if (category === 'second' && isAPlus) {
+        shop.aPlus.revenue += rowRev;
+        shop.aPlus.kg += rowKg;
+        shop.aPlus.pcs += rowPcs;
+        if (checkId) shop.aPlus.checks.add(checkId);
+      }
+
+      // Update BEDDING (Subcategory of New or general)
+      if (isBedding) {
+        shop.bedding.revenue += rowRev;
+        shop.bedding.kg += rowKg; // Should be 0 for new bedding
+        shop.bedding.pcs += rowPcs;
+        if (checkId) shop.bedding.checks.add(checkId);
+      }
+    });
+
+    return Array.from(shopsMap.values()).map(s => ({
+      ...s,
+      total: { ...s.total, checks: s.total.checks.size },
+      second: { ...s.second, checks: s.second.checks.size },
+      aPlus: { ...s.aPlus, checks: s.aPlus.checks.size },
+      bedding: { ...s.bedding, checks: s.bedding.checks.size }
+    })) as ShopDetailedKPI[];
+  } catch (error) {
+    console.error('Error fetching shop detailed KPIs:', error);
+    return [];
+  }
+}
+
+export async function fetchKPIs(
+  startDate: string,
+  endDate: string,
+  stores?: string[],
+  productGroups?: string[],
+  products?: string[]
+) {
+  let query = supabase
+    .from('sales_analytics')
+    .select('revenue, quantity_kg, quantity_pcs, recorder_id, store, product_group, product')
+    .gte('sale_date', startDate)
+    .lte('sale_date', endDate);
+
+  if (stores && stores.length > 0) query = query.in('store', stores);
+  if (productGroups && productGroups.length > 0) query = query.in('product_group', productGroups);
+  if (products && products.length > 0) query = query.in('product', products);
+
+  try {
+    const data = await fetchAll(query);
+    if (!data) return null;
+
+    const weights = await fetchProductWeights();
+
+    const total = { revenue: 0, kg: 0, pcs: 0, checks: new Set<string>(), positions: 0 };
+    const second = { revenue: 0, kg: 0, pcs: 0, checks: new Set<string>(), positions: 0 };
+    const newGoods = { revenue: 0, kg: 0, pcs: 0, checks: new Set<string>(), positions: 0 };
+
+    data.forEach((r: any) => {
+      const { weight: calculatedWeight, category } = getProductCategoryAndWeight(r, weights);
+
+      let rowKg = 0;
+      if (category === 'second') {
+        rowKg = calculatedWeight > 0 ? calculatedWeight : Number(r.quantity_kg);
+      }
+
+      const rowRev = Number(r.revenue);
+      const rowPcs = Number(r.quantity_pcs);
+      const checkId = r.recorder_id ? (r.recorder_id.includes('_') ? r.recorder_id.split('_')[0] : r.recorder_id) : null;
+
       total.revenue += rowRev;
       total.kg += rowKg;
       total.pcs += rowPcs;
       total.positions++;
       if (checkId) total.checks.add(checkId);
 
-      // Update Categories
       if (category === 'second') {
         second.revenue += rowRev;
         second.kg += rowKg;
         second.pcs += rowPcs;
-        second.positions++; // "Total purchases position (pure second)"
+        second.positions++;
         if (checkId) second.checks.add(checkId);
       } else {
         newGoods.revenue += rowRev;
-        // Kg is 0
         newGoods.pcs += rowPcs;
         newGoods.positions++;
         if (checkId) newGoods.checks.add(checkId);
@@ -265,8 +373,8 @@ export async function fetchKPIs(
         revenue: second.revenue,
         kg: second.kg,
         pcs: second.pcs,
-        checks: second.checks.size, // Checks containing at least one second item (approx)
-        avgCheck: second.checks.size > 0 ? second.revenue / second.checks.size : 0, // Revenue of Second / Count of checks with Second
+        checks: second.checks.size,
+        avgCheck: second.checks.size > 0 ? second.revenue / second.checks.size : 0,
         pricePerKg: second.kg > 0 ? second.revenue / second.kg : 0,
         positions: second.positions
       },

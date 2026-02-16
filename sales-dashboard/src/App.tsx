@@ -8,7 +8,7 @@ import {
   TrendingUp, Package, Weight, ShoppingCart, Receipt,
   Calendar, Store, Filter, ArrowUpDown, RefreshCw, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { fetchSalesData, fetchDistinctValues, fetchKPIs, fetchInventory, calculateEstimatedWeight, supabase, type SalesRecord, type InventoryRecord } from './lib/supabase';
+import { fetchSalesData, fetchDistinctValues, fetchKPIs, fetchInventory, calculateEstimatedWeight, supabase, fetchShopDetailedKPIs, type SalesRecord, type InventoryRecord, type ShopDetailedKPI } from './lib/supabase';
 import Login from './components/Login';
 import './index.css';
 
@@ -86,8 +86,9 @@ export default function App() {
   // Data state
   const [salesData, setSalesData] = useState<SalesRecord[]>([]);
   const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
-  const [productWeights, setProductWeights] = useState<any[]>([]);
   const [kpis, setKpis] = useState<any>(null);
+  const [shopKPIs, setShopKPIs] = useState<ShopDetailedKPI[]>([]);
+  const [productWeights, setProductWeights] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showFilters, setShowFilters] = useState(window.innerWidth > 768);
@@ -117,7 +118,7 @@ export default function App() {
   // Load sales and inventory data
   const loadData = async () => {
     setLoading(true);
-    const [data, kpiData, inventory] = await Promise.all([
+    const [data, kpiData, inventory, shopData] = await Promise.all([
       fetchSalesData(startDate, endDate,
         selectedStores.length > 0 ? selectedStores : undefined,
         selectedGroups.length > 0 ? selectedGroups : undefined,
@@ -128,11 +129,13 @@ export default function App() {
         selectedGroups.length > 0 ? selectedGroups : undefined,
         selectedProducts.length > 0 ? selectedProducts : undefined
       ),
-      fetchInventory()
+      fetchInventory(),
+      fetchShopDetailedKPIs(startDate, endDate, selectedStores.length > 0 ? selectedStores : undefined)
     ]);
     setSalesData(data);
     setKpis(kpiData);
     setInventoryData(inventory);
+    setShopKPIs(shopData as ShopDetailedKPI[]);
     setLoading(false);
   };
 
@@ -650,6 +653,171 @@ export default function App() {
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
+                </div>
+              </div>
+
+              {/* Detailed Dashboard Table (Excel-based) */}
+              <div className="table-section" style={{ marginTop: 40 }}>
+                <div className="table-header">
+                  <h3>📊 Детальный отчет по магазинам (20 показателей)</h3>
+                </div>
+                <div className="detailed-table-wrapper" style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <table className="detailed-kpi-table">
+                    <thead>
+                      <tr>
+                        <th rowSpan={2} className="sticky-col">Магазин</th>
+                        <th colSpan={2}>ИТОГО</th>
+                        <th colSpan={3}>СЭКОНД</th>
+                        <th colSpan={4}>КАТЕГОРИЯ "А+"</th>
+                        <th colSpan={2}>НОВЫЙ ТОВАР (КПБ)</th>
+                        <th colSpan={4}>СРЕДНИЙ ЧЕК</th>
+                        <th colSpan={4}>ТРАФИК И КОНТЕРСИЯ</th>
+                      </tr>
+                      <tr className="sub-header">
+                        {/* Итого */}
+                        <th>Выручка, ₽</th>
+                        <th>Прирост, %</th>
+                        {/* Секонд */}
+                        <th>Выручка, ₽</th>
+                        <th>Вес, Кг</th>
+                        <th>Цена/Кг, ₽</th>
+                        {/* A+ */}
+                        <th>Выручка, ₽</th>
+                        <th>Доля, %</th>
+                        <th>Вес, Кг</th>
+                        <th>Цена/Кг, ₽</th>
+                        {/* КПБ */}
+                        <th>Выручка, ₽</th>
+                        <th>Доля, %</th>
+                        {/* Ср. чеки */}
+                        <th>Итого, ₽</th>
+                        <th>Секонд, ₽</th>
+                        <th>"А+", ₽</th>
+                        <th>КПБ, ₽</th>
+                        {/* Трафик */}
+                        <th>Трафик, Чел</th>
+                        <th>Конв, %</th>
+                        <th>Новые, Шт</th>
+                        <th>Доля нов, %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shopKPIs.map((row, i) => (
+                        <tr key={i}>
+                          <td className="sticky-col font-bold">{row.store}</td>
+                          {/* Итого */}
+                          <td className="number">{formatCurrency(row.total.revenue)}</td>
+                          <td className="number dimmed">0%</td>
+                          {/* Секонд */}
+                          <td className="number">{formatCurrency(row.second.revenue)}</td>
+                          <td className="number">{formatNumber(row.second.kg, 1)}</td>
+                          <td className="number">{formatCurrency(row.second.kg > 0 ? row.second.revenue / row.second.kg : 0)}</td>
+                          {/* A+ */}
+                          <td className="number">{formatCurrency(row.aPlus.revenue)}</td>
+                          <td className="number">
+                            {row.second.revenue > 0 ? formatNumber((row.aPlus.revenue / row.second.revenue) * 100, 1) : 0}%
+                          </td>
+                          <td className="number">{formatNumber(row.aPlus.kg, 1)}</td>
+                          <td className="number">{formatCurrency(row.aPlus.kg > 0 ? row.aPlus.revenue / row.aPlus.kg : 0)}</td>
+                          {/* КПБ */}
+                          <td className="number">{formatCurrency(row.bedding.revenue)}</td>
+                          <td className="number">
+                            {row.total.revenue > 0 ? formatNumber((row.bedding.revenue / row.total.revenue) * 100, 1) : 0}%
+                          </td>
+                          {/* Ср. чек */}
+                          <td className="number">{formatCurrency(row.total.checks > 0 ? row.total.revenue / row.total.checks : 0)}</td>
+                          <td className="number">{formatCurrency(row.second.checks > 0 ? row.second.revenue / row.second.checks : 0)}</td>
+                          <td className="number">{formatCurrency(row.aPlus.checks > 0 ? row.aPlus.revenue / row.aPlus.checks : 0)}</td>
+                          <td className="number">{formatCurrency(row.bedding.checks > 0 ? row.bedding.revenue / row.bedding.checks : 0)}</td>
+                          {/* Трафик - Placeholders */}
+                          <td className="number dimmed">—</td>
+                          <td className="number dimmed">—</td>
+                          <td className="number dimmed">—</td>
+                          <td className="number dimmed">—</td>
+                        </tr>
+                      ))}
+                      {/* Summary Row */}
+                      <tr className="summary-row">
+                        <td className="sticky-col">ИТОГО ВСЕГО</td>
+                        <td className="number">{formatCurrency(shopKPIs.reduce((acc, r) => acc + r.total.revenue, 0))}</td>
+                        <td className="number dimmed">0%</td>
+                        <td className="number">{formatCurrency(shopKPIs.reduce((acc, r) => acc + r.second.revenue, 0))}</td>
+                        <td className="number">{formatNumber(shopKPIs.reduce((acc, r) => acc + r.second.kg, 0), 1)}</td>
+                        <td className="number">
+                          {formatCurrency(
+                            shopKPIs.reduce((acc, r) => acc + r.second.kg, 0) > 0
+                              ? shopKPIs.reduce((acc, r) => acc + r.second.revenue, 0) / shopKPIs.reduce((acc, r) => acc + r.second.kg, 0)
+                              : 0
+                          )}
+                        </td>
+                        <td className="number">{formatCurrency(shopKPIs.reduce((acc, r) => acc + r.aPlus.revenue, 0))}</td>
+                        <td className="number">
+                          {shopKPIs.reduce((acc, r) => acc + r.second.revenue, 0) > 0
+                            ? formatNumber((shopKPIs.reduce((acc, r) => acc + r.aPlus.revenue, 0) / shopKPIs.reduce((acc, r) => acc + r.second.revenue, 0)) * 100, 1)
+                            : 0}%
+                        </td>
+                        <td className="number">{formatNumber(shopKPIs.reduce((acc, r) => acc + r.aPlus.kg, 0), 1)}</td>
+                        <td className="number">
+                          {formatCurrency(
+                            shopKPIs.reduce((acc, r) => acc + r.aPlus.kg, 0) > 0
+                              ? shopKPIs.reduce((acc, r) => acc + r.aPlus.revenue, 0) / shopKPIs.reduce((acc, r) => acc + r.aPlus.kg, 0)
+                              : 0
+                          )}
+                        </td>
+                        <td className="number">{formatCurrency(shopKPIs.reduce((acc, r) => acc + r.bedding.revenue, 0))}</td>
+                        <td className="number">
+                          {shopKPIs.reduce((acc, r) => acc + r.total.revenue, 0) > 0
+                            ? formatNumber((shopKPIs.reduce((acc, r) => acc + r.bedding.revenue, 0) / shopKPIs.reduce((acc, r) => acc + r.total.revenue, 0)) * 100, 1)
+                            : 0}%
+                        </td>
+                        <td className="number">
+                          {formatCurrency(
+                            shopKPIs.reduce((acc, r) => acc + (r.total.checks as unknown as number), 0) > 0
+                              ? shopKPIs.reduce((acc, r) => acc + r.total.revenue, 0) / shopKPIs.reduce((acc, r) => acc + (r.total.checks as unknown as number), 0)
+                              : 0
+                          )}
+                        </td>
+                        <td className="number">
+                          {formatCurrency(
+                            shopKPIs.reduce((acc, r) => acc + (r.second.checks as unknown as number), 0) > 0
+                              ? shopKPIs.reduce((acc, r) => acc + r.second.revenue, 0) / shopKPIs.reduce((acc, r) => acc + (r.second.checks as unknown as number), 0)
+                              : 0
+                          )}
+                        </td>
+                        <td className="number">
+                          {formatCurrency(
+                            shopKPIs.reduce((acc, r) => acc + (r.aPlus.checks as unknown as number), 0) > 0
+                              ? shopKPIs.reduce((acc, r) => acc + r.aPlus.revenue, 0) / shopKPIs.reduce((acc, r) => acc + (r.aPlus.checks as unknown as number), 0)
+                              : 0
+                          )}
+                        </td>
+                        <td className="number">
+                          {formatCurrency(
+                            shopKPIs.reduce((acc, r) => acc + (r.bedding.checks as unknown as number), 0) > 0
+                              ? shopKPIs.reduce((acc, r) => acc + r.bedding.revenue, 0) / shopKPIs.reduce((acc, r) => acc + (r.bedding.checks as unknown as number), 0)
+                              : 0
+                          )}
+                        </td>
+                        <td className="number dimmed">—</td>
+                        <td className="number dimmed">—</td>
+                        <td className="number dimmed">—</td>
+                        <td className="number dimmed">—</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Legend from Excel */}
+                <div className="table-legend" style={{ marginTop: 16, padding: 16, background: 'rgba(255,255,255,0.02)', borderRadius: 8, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  <p><strong>Пояснения к колонкам:</strong></p>
+                  <ul style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 20px', listStyle: 'none', padding: 0 }}>
+                    <li>• <strong>Прирост выручки:</strong> к такому же прошедшему периоду в %</li>
+                    <li>• <strong>Выручка СЭКОНД:</strong> только весовой товар без нового</li>
+                    <li>• <strong>Категория "А+":</strong> товары с меткой люкс/экстра в названии</li>
+                    <li>• <strong>Выручка КПБ:</strong> продажи нового постельного белья</li>
+                    <li>• <strong>Трафик:</strong> количество зашедших покупателей (в разработке)</li>
+                    <li>• <strong>Конверсия:</strong> отношение чеков к трафику</li>
+                  </ul>
                 </div>
               </div>
 
