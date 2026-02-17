@@ -568,19 +568,21 @@ export default function App() {
                   <table className="detailed-kpi-table">
                     <thead>
                       <tr>
-                        <th rowSpan={2} className="sticky-col">Магазин</th>
-                        <th colSpan={2}>ИТОГО</th>
-                        <th colSpan={3}>СЭКОНД</th>
-                        <th colSpan={4}>КАТЕГОРИЯ "А+"</th>
-                        <th colSpan={2}>НОВЫЙ ТОВАР (КПБ)</th>
-                        <th colSpan={5}>СРЕДНИЙ ЧЕК / ПОКАЗАТЕЛИ</th>
-                        <th colSpan={4}>ТРАФИК И КОНВЕРСИЯ</th>
+                        <th rowSpan={2} style={{ minWidth: '120px' }}>Магазин</th>
+                        <th colSpan={3}>ИТОГО</th>
+                        <th colSpan={3}>СЕКОНД</th>
+                        <th colSpan={3}>Категория "А+"</th>
+                        <th colSpan={2}>Новый (КПБ)</th>
+                        <th colSpan={5}>Средний чек</th>
+                        <th colSpan={4}>Трафик (счетчики)</th>
                       </tr>
                       <tr className="sub-header">
-                        {/* Итого */}
-                        <th>Выручка, ₽</th>
-                        <th>Прирост, %</th>
-                        {/* Секонд */}
+                        {/* ИТОГО sub-columns */}
+                        <th>Выручка</th>
+                        <th>Прирост,<br />% месяц<br />назад</th>
+                        <th>Прирост,<br />% неделю<br />назад</th>
+
+                        {/* СЕКОНД sub-columns */}
                         <th>Выручка, ₽</th>
                         <th>Вес, Кг</th>
                         <th>Цена/Кг, ₽</th>
@@ -613,6 +615,15 @@ export default function App() {
                           <td className="number">{formatCurrency(row.total.revenue)}</td>
                           <td className={`number ${row.revenueGrowth > 0 ? 'growth-up' : row.revenueGrowth < 0 ? 'growth-down' : 'dimmed'}`}>
                             {row.revenueGrowth > 0 ? '+' : ''}{formatNumber(row.revenueGrowth, 1)}%
+                          </td>
+                          <td className={`number ${row.revenueGrowthWeek !== undefined ? (row.revenueGrowthWeek > 0 ? 'growth-up' : row.revenueGrowthWeek < 0 ? 'growth-down' : 'dimmed') : 'dimmed'}`}>
+                            {row.revenueGrowthWeek !== undefined ? (
+                              <>
+                                {row.revenueGrowthWeek > 0 ? '+' : ''}{formatNumber(row.revenueGrowthWeek, 1)}%
+                              </>
+                            ) : (
+                              '—'
+                            )}
                           </td>
                           {/* Секонд */}
                           <td className="number">{formatCurrency(row.second.revenue)}</td>
@@ -659,6 +670,30 @@ export default function App() {
                             const totalPast = shopKPIs.reduce((acc, r) => acc + r.totalPastRevenue, 0);
                             const totalGrowth = totalPast > 0 ? ((totalCurr / totalPast) - 1) * 100 : 0;
                             return (totalGrowth > 0 ? '+' : '') + formatNumber(totalGrowth, 1) + '%';
+                          })()}
+                        </td>
+                        <td className={`number ${(() => {
+                          // Calculate global weekly growth
+                          const totalCurr = shopKPIs.reduce((acc, r) => acc + r.total.revenue, 0);
+                          const totalPastWeek = shopKPIs.reduce((acc, r) => acc + (r.totalPastWeekRevenue || 0), 0);
+
+                          // Check if any shop has undefined weekly growth (meaning long period)
+                          // Ideally, we check one record or the passed prop, but here checking if totalPastWeek > 0 is a proxy
+                          // If period > 7 days, totalPastWeekRevenue is undefined/0 for all.
+                          if (totalPastWeek === 0) return 'dimmed';
+
+                          const growth = ((totalCurr - totalPastWeek) / totalPastWeek) * 100;
+                          return growth > 0 ? 'growth-up' : growth < 0 ? 'growth-down' : 'dimmed';
+                        })()
+                          }`}>
+                          {(() => {
+                            const totalCurr = shopKPIs.reduce((acc, r) => acc + r.total.revenue, 0);
+                            const totalPastWeek = shopKPIs.reduce((acc, r) => acc + (r.totalPastWeekRevenue || 0), 0);
+
+                            if (totalPastWeek === 0 && shopKPIs.every(r => r.revenueGrowthWeek === undefined)) return '—';
+
+                            const growth = totalPastWeek > 0 ? ((totalCurr - totalPastWeek) / totalPastWeek) * 100 : 0;
+                            return (growth > 0 ? '+' : '') + formatNumber(growth, 1) + '%';
                           })()}
                         </td>
                         <td className="number">{formatCurrency(shopKPIs.reduce((acc, r) => acc + r.second.revenue, 0))}</td>

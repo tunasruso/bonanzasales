@@ -210,6 +210,8 @@ export interface ShopDetailedKPI {
   bedding: DetailedKPI;
   revenueGrowth: number;
   totalPastRevenue: number;
+  revenueGrowthWeek?: number;
+  totalPastWeekRevenue?: number;
 }
 
 export async function fetchShopDetailedKPIs(
@@ -228,6 +230,24 @@ export async function fetchShopDetailedKPIs(
   const formattedPrevStart = prevStart.toISOString().split('T')[0];
   const formattedPrevEnd = prevEnd.toISOString().split('T')[0];
 
+  // Calculate Weekly Info if period is <= 7 days
+  const timeDiff = end.getTime() - start.getTime();
+  const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1; // +1 to include start date
+  const isShortPeriod = daysDiff <= 7;
+
+  let formattedPrevWeekStart = '';
+  let formattedPrevWeekEnd = '';
+
+  if (isShortPeriod) {
+    const prevWeekStart = new Date(start);
+    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+    const prevWeekEnd = new Date(end);
+    prevWeekEnd.setDate(prevWeekEnd.getDate() - 7);
+
+    formattedPrevWeekStart = prevWeekStart.toISOString().split('T')[0];
+    formattedPrevWeekEnd = prevWeekEnd.toISOString().split('T')[0];
+  }
+
   let query = supabase
     .from('sales_analytics')
     .select('revenue, quantity_kg, quantity_pcs, recorder_id, store, product_group, product')
@@ -244,10 +264,22 @@ export async function fetchShopDetailedKPIs(
 
   if (stores && stores.length > 0) prevQuery = prevQuery.in('store', stores);
 
+  let prevWeekQuery = null;
+  if (isShortPeriod) {
+    prevWeekQuery = supabase
+      .from('sales_analytics')
+      .select('revenue, store')
+      .gte('sale_date', formattedPrevWeekStart)
+      .lte('sale_date', formattedPrevWeekEnd);
+
+    if (stores && stores.length > 0) prevWeekQuery = prevWeekQuery.in('store', stores);
+  }
+
   try {
-    const [data, prevData] = await Promise.all([
+    const [data, prevData, prevWeekData] = await Promise.all([
       fetchAll(query),
-      fetchAll(prevQuery)
+      fetchAll(prevQuery),
+      isShortPeriod && prevWeekQuery ? fetchAll(prevWeekQuery) : Promise.resolve([])
     ]);
 
     if (!data) return [];
@@ -255,12 +287,21 @@ export async function fetchShopDetailedKPIs(
     const weights = await fetchProductWeights();
     const shopsMap = new Map<string, { store: string, total: AccumulatorDetailedKPI, second: AccumulatorDetailedKPI, aPlus: AccumulatorDetailedKPI, bedding: AccumulatorDetailedKPI }>();
     const prevShopsRevenue = new Map<string, number>();
+    const prevWeekShopsRevenue = new Map<string, number>();
 
     // Sum up previous period revenue
     prevData.forEach((r: any) => {
       const sName = r.store || 'Unknown';
       prevShopsRevenue.set(sName, (prevShopsRevenue.get(sName) || 0) + Number(r.revenue));
     });
+
+    // Sum up prev week revenue
+    if (prevWeekData) {
+      prevWeekData.forEach((r: any) => {
+        const sName = r.store || 'Unknown';
+        prevWeekShopsRevenue.set(sName, (prevWeekShopsRevenue.get(sName) || 0) + Number(r.revenue));
+      });
+    }
 
     const getEmptyDetailed = (): AccumulatorDetailedKPI => ({ revenue: 0, kg: 0, pcs: 0, checks: new Set<string>() });
 
@@ -319,24 +360,37 @@ export async function fetchShopDetailedKPIs(
       }
     });
 
-    return Array.from(shopsMap.values()).map(s => {
-      const currentRev = s.total.revenue;
-      const pastRev = prevShopsRevenue.get(s.store) || 0;
-      let growth = 0;
-      if (pastRev > 0) {
-        growth = ((currentRev / pastRev) - 1) * 100;
+    // Finalize
+    const result: ShopDetailedKPI[] = Array.from(shopsMap.values()).map(s => {
+      const pastRevenue = prevShopsRevenue.get(s.store) || 0;
+      let revenueGrowth = 0;
+      if (pastRevenue > 0) {
+        revenueGrowth = ((s.total.revenue - pastRevenue) / pastRevenue) * 100;
+      }
+
+      const pastWeekRevenue = prevWeekShopsRevenue.get(s.store) || 0;
+      let revenueGrowthWeek: number | undefined = undefined;
+      if (isShortPeriod) {
+        if (pastWeekRevenue > 0) {
+          revenueGrowthWeek = ((s.total.revenue - pastWeekRevenue) / pastWeekRevenue) * 100;
+        } else {
+          revenueGrowthWeek = s.total.revenue > 0 ? 100 : 0;
+        }
       }
 
       return {
-        ...s,
+        store: s.store,
         total: { ...s.total, checks: s.total.checks.size },
         second: { ...s.second, checks: s.second.checks.size },
         aPlus: { ...s.aPlus, checks: s.aPlus.checks.size },
         bedding: { ...s.bedding, checks: s.bedding.checks.size },
-        revenueGrowth: growth,
-        totalPastRevenue: pastRev
+        revenueGrowth,
+        totalPastRevenue: pastRevenue,
+        revenueGrowthWeek,
+        totalPastWeekRevenue: isShortPeriod ? pastWeekRevenue : undefined
       };
-    }) as ShopDetailedKPI[];
+    });
+    return result;
   } catch (error) {
     console.error('Error fetching shop detailed KPIs:', error);
     return [];
