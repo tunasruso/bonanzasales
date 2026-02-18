@@ -2,13 +2,13 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  Area, AreaChart
+  Area, AreaChart, LineChart, Line
 } from 'recharts';
 import {
   TrendingUp, Package, Weight, ShoppingCart, Receipt,
   Calendar, Store, Filter, ArrowUpDown, RefreshCw, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { fetchSalesData, fetchDistinctValues, fetchKPIs, fetchInventory, calculateEstimatedWeight, supabase, fetchShopDetailedKPIs, type SalesRecord, type InventoryRecord, type ShopDetailedKPI } from './lib/supabase';
+import { fetchSalesData, fetchDistinctValues, fetchKPIs, fetchInventory, calculateEstimatedWeight, getProductCategoryAndWeight, supabase, fetchShopDetailedKPIs, type SalesRecord, type InventoryRecord, type ShopDetailedKPI } from './lib/supabase';
 import Login from './components/Login';
 import './index.css';
 
@@ -326,6 +326,33 @@ export default function App() {
       }));
   }, [salesData, productWeights]);
 
+  // Chart data by day for daily dynamics
+  const dailyData = useMemo(() => {
+    const grouped = new Map<string, { revenue: number; secondRevenue: number; secondKg: number }>();
+
+    salesData.forEach(record => {
+      const date = record.sale_date;
+      const existing = grouped.get(date) || { revenue: 0, secondRevenue: 0, secondKg: 0 };
+
+      const { weight, category } = getProductCategoryAndWeight(record, productWeights);
+
+      grouped.set(date, {
+        revenue: existing.revenue + Number(record.revenue),
+        secondRevenue: existing.secondRevenue + (category === 'second' ? Number(record.revenue) : 0),
+        secondKg: existing.secondKg + (category === 'second' ? weight : 0)
+      });
+    });
+
+    return Array.from(grouped.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, values]) => ({
+        date: date.split('-').slice(1).reverse().join('.'), // DD.MM
+        fullDate: date,
+        revenue: values.revenue,
+        avgPriceSecond: values.secondKg > 0 ? Math.round(values.secondRevenue / values.secondKg) : 0
+      }));
+  }, [salesData, productWeights]);
+
   // Pie chart data
   const pieData = useMemo(() => {
     // Re-calculate basic aggregation for pie chart without stock interference
@@ -568,43 +595,43 @@ export default function App() {
                   <table className="detailed-kpi-table">
                     <thead>
                       <tr>
-                        <th rowSpan={2} style={{ minWidth: '120px' }}>Магазин</th>
-                        <th colSpan={3}>ИТОГО</th>
-                        <th colSpan={3}>СЕКОНД</th>
-                        <th colSpan={3}>Категория "А+"</th>
-                        <th colSpan={2}>Новый (КПБ)</th>
-                        <th colSpan={5}>Средний чек</th>
-                        <th colSpan={4}>Трафик (счетчики)</th>
+                        <th rowSpan={2} style={{ minWidth: '120px', background: '#1f2937' }}>Магазин</th>
+                        <th colSpan={3} style={{ background: 'rgba(59, 130, 246, 0.3)', borderBottom: '2px solid #3b82f6' }}>ИТОГО</th>
+                        <th colSpan={3} style={{ background: 'rgba(168, 85, 247, 0.3)', borderBottom: '2px solid #a855f7' }}>СЕКОНД</th>
+                        <th colSpan={4} style={{ background: 'rgba(236, 72, 153, 0.3)', borderBottom: '2px solid #ec4899' }}>Категория "А+"</th>
+                        <th colSpan={2} style={{ background: 'rgba(6, 182, 212, 0.3)', borderBottom: '2px solid #06b6d4' }}>Новый (КПБ)</th>
+                        <th colSpan={5} style={{ background: 'rgba(245, 158, 11, 0.3)', borderBottom: '2px solid #f59e0b' }}>Средний чек</th>
+                        <th colSpan={4} style={{ background: 'rgba(16, 185, 129, 0.3)', borderBottom: '2px solid #10b981' }}>Трафик (счетчики)</th>
                       </tr>
                       <tr className="sub-header">
                         {/* ИТОГО sub-columns */}
-                        <th>Выручка</th>
-                        <th>Прирост,<br />% месяц<br />назад</th>
-                        <th>Прирост,<br />% неделю<br />назад</th>
+                        <th style={{ background: 'rgba(59, 130, 246, 0.1)' }}>Выручка</th>
+                        <th style={{ background: 'rgba(59, 130, 246, 0.1)' }}>Прирост,<br />% месяц<br />назад</th>
+                        <th style={{ background: 'rgba(59, 130, 246, 0.1)' }}>Прирост,<br />% неделю<br />назад</th>
 
                         {/* СЕКОНД sub-columns */}
-                        <th>Выручка, ₽</th>
-                        <th>Вес, Кг</th>
-                        <th>Цена/Кг, ₽</th>
+                        <th style={{ background: 'rgba(168, 85, 247, 0.1)' }}>Выручка, ₽</th>
+                        <th style={{ background: 'rgba(168, 85, 247, 0.1)' }}>Вес, Кг</th>
+                        <th style={{ background: 'rgba(168, 85, 247, 0.1)' }}>Цена/Кг, ₽</th>
                         {/* A+ */}
-                        <th>Выручка, ₽</th>
-                        <th>Доля, %</th>
-                        <th>Вес, Кг</th>
-                        <th>Цена/Кг, ₽</th>
+                        <th style={{ background: 'rgba(236, 72, 153, 0.1)' }}>Выручка, ₽</th>
+                        <th style={{ background: 'rgba(236, 72, 153, 0.1)' }}>Доля, %</th>
+                        <th style={{ background: 'rgba(236, 72, 153, 0.1)' }}>Вес, Кг</th>
+                        <th style={{ background: 'rgba(236, 72, 153, 0.1)' }}>Цена/Кг, ₽</th>
                         {/* КПБ */}
-                        <th>Выручка, ₽</th>
-                        <th>Доля, %</th>
+                        <th style={{ background: 'rgba(6, 182, 212, 0.1)' }}>Выручка, ₽</th>
+                        <th style={{ background: 'rgba(6, 182, 212, 0.1)' }}>Доля, %</th>
                         {/* Ср. чеки */}
-                        <th>Итого, ₽</th>
-                        <th>Секонд, ₽</th>
-                        <th>"А+", ₽</th>
-                        <th>КПБ, ₽</th>
-                        <th className="highlight-red">Ср. кол-во тов. в чеке</th>
+                        <th style={{ background: 'rgba(245, 158, 11, 0.1)' }}>Итого, ₽</th>
+                        <th style={{ background: 'rgba(245, 158, 11, 0.1)' }}>Секонд, ₽</th>
+                        <th style={{ background: 'rgba(245, 158, 11, 0.1)' }}>"А+", ₽</th>
+                        <th style={{ background: 'rgba(245, 158, 11, 0.1)' }}>КПБ, ₽</th>
+                        <th className="highlight-red" style={{ background: 'rgba(245, 158, 11, 0.1)' }}>Ср. кол-во тов. в чеке</th>
                         {/* Трафик */}
-                        <th>Трафик, Чел</th>
-                        <th>Конв, %</th>
-                        <th>Новые, Шт</th>
-                        <th>Доля нов, %</th>
+                        <th style={{ background: 'rgba(16, 185, 129, 0.1)' }}>Трафик, Чел</th>
+                        <th style={{ background: 'rgba(16, 185, 129, 0.1)' }}>Конв, %</th>
+                        <th style={{ background: 'rgba(16, 185, 129, 0.1)' }}>Новые, Шт</th>
+                        <th style={{ background: 'rgba(16, 185, 129, 0.1)' }}>Доля нов, %</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -788,32 +815,54 @@ export default function App() {
 
               {/* Charts (Keep charts as is) */}
               <div className="charts-grid">
-                <div className="chart-card">
-                  <h3>📈 Выручка по месяцам</h3>
-                  <div className="chart-container">
+                <div className="chart-card daily-dynamics" style={{ gridColumn: '1 / -1' }}>
+                  <h3>📉 Динамика выручки и цены сэконда (по дням)</h3>
+                  <div className="chart-container" style={{ height: '400px' }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={monthlyData}>
-                        <defs>
-                          <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#00d4ff" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="#00d4ff" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
+                      <LineChart data={dailyData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                        <XAxis dataKey="month" stroke="#6c6c7c" />
-                        <YAxis stroke="#6c6c7c" tickFormatter={v => `${(v / 1000000).toFixed(1)}М`} />
-                        <Tooltip
-                          contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)' }}
-                          formatter={(value: number | undefined) => [formatCurrency(value), 'Выручка']}
+                        <XAxis dataKey="date" stroke="#6c6c7c" />
+                        <YAxis
+                          yAxisId="left"
+                          stroke="#00d4ff"
+                          tickFormatter={v => `${(v / 1000).toFixed(0)}К`}
+                          label={{ value: 'Выручка (₽)', angle: -90, position: 'insideLeft', fill: '#00d4ff', offset: 10 }}
                         />
-                        <Area
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          stroke="#eab308"
+                          label={{ value: 'Цена сэконда (₽/кг)', angle: 90, position: 'insideRight', fill: '#eab308', offset: 10 }}
+                        />
+                        <Tooltip
+                          contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)', color: '#fff' }}
+                          formatter={(value: any, name: string | undefined) => {
+                            if (name === 'Выручка') return [formatCurrency(value), name];
+                            return [`${value} ₽/кг`, name || ''];
+                          }}
+                        />
+                        <Legend />
+                        <Line
+                          yAxisId="left"
                           type="monotone"
                           dataKey="revenue"
+                          name="Выручка"
                           stroke="#00d4ff"
                           strokeWidth={3}
-                          fill="url(#colorRevenue)"
+                          dot={{ r: 4, fill: '#00d4ff' }}
+                          activeDot={{ r: 6 }}
                         />
-                      </AreaChart>
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="avgPriceSecond"
+                          name="Цена сэконда"
+                          stroke="#eab308"
+                          strokeWidth={3}
+                          dot={{ r: 4, fill: '#eab308' }}
+                          activeDot={{ r: 6 }}
+                        />
+                      </LineChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
@@ -846,32 +895,14 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="chart-card">
-                  <h3>📦 Продажи в кг по месяцам</h3>
-                  <div className="chart-container">
+                <div className="chart-card" style={rowDimension === 'product_group' ? { gridColumn: '1 / -1' } : {}}>
+                  <h3>📊 {rowDimension === 'product_group' ? 'Выручка по товарным группам' : 'Топ магазинов по выручке'}</h3>
+                  <div className="chart-container" style={rowDimension === 'product_group' ? { height: '600px' } : {}}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={monthlyData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                        <XAxis dataKey="month" stroke="#6c6c7c" />
-                        <YAxis stroke="#6c6c7c" />
-                        <Tooltip
-                          contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)' }}
-                          formatter={(value: number | undefined) => [formatNumber(value, 0) + ' кг', 'Количество']}
-                        />
-                        <Bar dataKey="kg" fill="#a855f7" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                <div className="chart-card">
-                  <h3>📊 Топ магазинов по выручке</h3>
-                  <div className="chart-container">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={aggregatedData.slice(0, 10)} layout="vertical">
+                      <BarChart data={rowDimension === 'product_group' ? aggregatedData : aggregatedData.slice(0, 10)} layout="vertical">
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                         <XAxis type="number" stroke="#6c6c7c" tickFormatter={v => `${(v / 1000000).toFixed(1)}М`} />
-                        <YAxis dataKey="name" type="category" stroke="#6c6c7c" width={100} />
+                        <YAxis dataKey="name" type="category" stroke="#6c6c7c" width={rowDimension === 'product_group' ? 150 : 100} interval={0} />
                         <Tooltip
                           contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)' }}
                           formatter={(value: number | undefined) => [formatCurrency(value), 'Выручка']}
