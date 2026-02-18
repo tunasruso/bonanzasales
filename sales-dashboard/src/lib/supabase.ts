@@ -351,10 +351,10 @@ export async function fetchShopDetailedKPIs(
         if (checkId) shop.aPlus.checks.add(checkId);
       }
 
-      // Update BEDDING (Subcategory of New or general)
-      if (isBedding) {
+      // Update NEW GOODS (КПБ column — includes ALL 'new' category items: КПБ, Наволочка, Простыня, Полотенце, etc.)
+      if (category === 'new') {
         shop.bedding.revenue += rowRev;
-        shop.bedding.kg += rowKg; // Should be 0 for new bedding
+        shop.bedding.kg += 0; // New goods have no weight
         shop.bedding.pcs += rowPcs;
         if (checkId) shop.bedding.checks.add(checkId);
       }
