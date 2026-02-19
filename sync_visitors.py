@@ -5,9 +5,12 @@ Sync Visitors (Traffic Counters) from 1C:Retail → Supabase
 ═══════════════════════════════════════════════════════════════════════════════
 
 Source: Register _AccumRg53554 (Посетители)
-  - _Period → visit_date
-  - _Fld53555RRef → Warehouse reference → Store name
-  - _Fld53556 → visitor_count (количество посетителей)
+  Dimension: _Fld53555RRef → _Reference648 (Оборудование подсчёта посетителей)
+    → _Reference648._Fld15930RRef → _Reference640 (Склад) → parent store name
+  Resources:
+    _Fld53556 = КоличествоЧеков (check count) 
+    _Fld53557 = КоличествоПокупателей (buyer count)
+    _Fld53558 = КоличествоПосетителей (VISITOR COUNT)
 
 Target: Supabase table `visitors_analytics`
   - visit_date, store, visitor_count
@@ -39,9 +42,11 @@ DB_CONFIG = {
 SUPABASE_URL = "https://lyfznzntclgitarujlab.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5Znpuem50Y2xnaXRhcnVqbGFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTM2OTgsImV4cCI6MjA2NzQ4OTY5OH0.UyUQzzKQ70p7RHw4TWHvUutMkGuo9VGZiGPdVZpVcs0"
 
-# Warehouse reference column in _AccumRg53554
-WAREHOUSE_REF = '_Fld53555RRef'
-VISITOR_COUNT_COL = '_Fld53556'
+# Register fields
+COUNTER_DEVICE_REF = '_Fld53555RRef'  # → _Reference648 (counter device)
+CHECK_COUNT_COL    = '_Fld53556'      # Количество чеков
+BUYER_COUNT_COL    = '_Fld53557'      # Количество покупателей
+VISITOR_COUNT_COL  = '_Fld53558'      # Количество посетителей (main metric)
 
 BATCH_SIZE = 500
 
@@ -70,24 +75,33 @@ class DecimalEncoder(json.JSONEncoder):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def extract_visitors(start_date='2026-01-01'):
-    """Extract visitor data from 1C register _AccumRg53554."""
+    """Extract visitor data from 1C register _AccumRg53554.
+    
+    Chain: _AccumRg53554._Fld53555RRef 
+           → _Reference648 (counter device, e.g. "Озерки")
+           → _Reference648._Fld15930RRef 
+           → _Reference640 (warehouse, e.g. "Магазин (Озерки) Торговый зал")
+           → _Reference640._ParentIDRRef
+           → _Reference640 (parent store, e.g. "Озерки")
+    """
     log.info(f"Extracting visitors data since {start_date}...")
 
     conn = psycopg2.connect(**DB_CONFIG)
     cursor = conn.cursor()
 
-    # Aggregate by date + store (parent warehouse)
+    # Join through: register → counter device → warehouse → parent store
     query = f"""
     SELECT 
         v._Period::date AS visit_date,
-        COALESCE(m._Description, w._Description) AS store,
+        COALESCE(parent_store._Description, wh._Description, dev._Description) AS store,
         SUM(v.{VISITOR_COUNT_COL}) AS visitor_count
     FROM _AccumRg53554 v
-    INNER JOIN _Reference640 w ON v.{WAREHOUSE_REF} = w._IDRRef
-    LEFT JOIN _Reference640 m ON w._ParentIDRRef = m._IDRRef
+    INNER JOIN _Reference648 dev ON v.{COUNTER_DEVICE_REF} = dev._IDRRef
+    LEFT JOIN _Reference640 wh ON dev._Fld15930RRef = wh._IDRRef
+    LEFT JOIN _Reference640 parent_store ON wh._ParentIDRRef = parent_store._IDRRef
     WHERE v._Period >= %s
       AND v._Active = true
-    GROUP BY v._Period::date, COALESCE(m._Description, w._Description)
+    GROUP BY v._Period::date, COALESCE(parent_store._Description, wh._Description, dev._Description)
     ORDER BY visit_date, store
     """
 
@@ -98,12 +112,16 @@ def extract_visitors(start_date='2026-01-01'):
     records = []
     for row in rows:
         visit_date, store, visitor_count = row
-        if store and visitor_count:
+        store_name = store.strip() if store else None
+        count = float(visitor_count) if visitor_count else 0
+        
+        if store_name and count > 0:
             records.append({
                 'visit_date': visit_date.isoformat(),
-                'store': store.strip(),
-                'visitor_count': float(visitor_count)
+                'store': store_name,
+                'visitor_count': count
             })
+            log.info(f"  {visit_date} | {store_name:20s} | {count:.0f} visitors")
 
     cursor.close()
     conn.close()
@@ -163,7 +181,7 @@ def upload_visitors(records):
 def main():
     print()
     print("═" * 70)
-    print("  LiderTeks Visitors (Traffic) Sync: 1C → Supabase")
+    print("  Bonanza Visitors (Traffic) Sync: 1C → Supabase")
     print("═" * 70)
 
     records = extract_visitors()
