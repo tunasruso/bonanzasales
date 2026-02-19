@@ -539,3 +539,32 @@ export async function checkUser(username: string, password: string): Promise<boo
   return true;
 }
 
+export interface VisitorRecord {
+  visit_date: string;
+  store: string;
+  visitor_count: number;
+}
+
+export async function fetchVisitors(
+  startDate: string,
+  endDate: string,
+  stores?: string[]
+): Promise<VisitorRecord[]> {
+  let query = supabase
+    .from('visitors_analytics')
+    .select('visit_date, store, visitor_count')
+    .gte('visit_date', startDate)
+    .lte('visit_date', endDate);
+
+  if (stores && stores.length > 0) {
+    query = query.in('store', stores);
+  }
+
+  try {
+    const data = await fetchAll(query);
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching visitors:', error);
+    return [];
+  }
+}

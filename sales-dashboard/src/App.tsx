@@ -8,7 +8,7 @@ import {
   TrendingUp, Package, Weight, ShoppingCart, Receipt,
   Calendar, Store, Filter, ArrowUpDown, RefreshCw, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { fetchSalesData, fetchDistinctValues, fetchKPIs, fetchInventory, calculateEstimatedWeight, getProductCategoryAndWeight, supabase, fetchShopDetailedKPIs, type SalesRecord, type InventoryRecord, type ShopDetailedKPI } from './lib/supabase';
+import { fetchSalesData, fetchDistinctValues, fetchKPIs, fetchInventory, calculateEstimatedWeight, getProductCategoryAndWeight, supabase, fetchShopDetailedKPIs, fetchVisitors, type SalesRecord, type InventoryRecord, type ShopDetailedKPI, type VisitorRecord } from './lib/supabase';
 import Login from './components/Login';
 import './index.css';
 
@@ -88,6 +88,7 @@ export default function App() {
   const [inventoryData, setInventoryData] = useState<InventoryRecord[]>([]);
   const [kpis, setKpis] = useState<any>(null);
   const [shopKPIs, setShopKPIs] = useState<ShopDetailedKPI[]>([]);
+  const [visitorsData, setVisitorsData] = useState<VisitorRecord[]>([]);
   const [productWeights, setProductWeights] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -118,7 +119,7 @@ export default function App() {
   // Load sales and inventory data
   const loadData = async () => {
     setLoading(true);
-    const [data, kpiData, inventory, shopData] = await Promise.all([
+    const [data, kpiData, inventory, shopData, visitors] = await Promise.all([
       fetchSalesData(startDate, endDate,
         selectedStores.length > 0 ? selectedStores : undefined,
         selectedGroups.length > 0 ? selectedGroups : undefined,
@@ -130,12 +131,14 @@ export default function App() {
         selectedProducts.length > 0 ? selectedProducts : undefined
       ),
       fetchInventory(),
-      fetchShopDetailedKPIs(startDate, endDate, selectedStores.length > 0 ? selectedStores : undefined)
+      fetchShopDetailedKPIs(startDate, endDate, selectedStores.length > 0 ? selectedStores : undefined),
+      fetchVisitors(startDate, endDate, selectedStores.length > 0 ? selectedStores : undefined)
     ]);
     setSalesData(data);
     setKpis(kpiData);
     setInventoryData(inventory);
     setShopKPIs(shopData as ShopDetailedKPI[]);
+    setVisitorsData(visitors);
     setLoading(false);
   };
 
@@ -674,11 +677,21 @@ export default function App() {
                           <td className="number">{formatCurrency(row.aPlus.checks > 0 ? row.aPlus.revenue / row.aPlus.checks : 0)}</td>
                           <td className="number">{formatCurrency(row.bedding.checks > 0 ? row.bedding.revenue / row.bedding.checks : 0)}</td>
                           <td className="number highlight-red">{formatNumber(row.total.checks > 0 ? row.total.pcs / row.total.checks : 0, 1)}</td>
-                          {/* Трафик - Placeholders */}
-                          <td className="number dimmed">—</td>
-                          <td className="number dimmed">—</td>
-                          <td className="number dimmed">—</td>
-                          <td className="number dimmed">—</td>
+                          {/* Трафик - from visitors_analytics */}
+                          {(() => {
+                            const storeVisitors = visitorsData.filter(v => v.store === row.store).reduce((sum, v) => sum + Number(v.visitor_count), 0);
+                            const checks = row.total.checks as unknown as number;
+                            const conv = storeVisitors > 0 ? (checks / storeVisitors) * 100 : 0;
+                            const hasData = storeVisitors > 0;
+                            return (
+                              <>
+                                <td className={`number ${hasData ? '' : 'dimmed'}`}>{hasData ? storeVisitors.toLocaleString('ru-RU') : '—'}</td>
+                                <td className={`number ${hasData ? '' : 'dimmed'}`}>{hasData ? formatNumber(conv, 1) + '%' : '—'}</td>
+                                <td className="number dimmed">—</td>
+                                <td className="number dimmed">—</td>
+                              </>
+                            );
+                          })()}
                         </tr>
                       ))}
                       {/* Summary Row */}
@@ -788,10 +801,20 @@ export default function App() {
                             1
                           )}
                         </td>
-                        <td className="number dimmed">—</td>
-                        <td className="number dimmed">—</td>
-                        <td className="number dimmed">—</td>
-                        <td className="number dimmed">—</td>
+                        {(() => {
+                          const totalVisitors = visitorsData.reduce((sum, v) => sum + Number(v.visitor_count), 0);
+                          const totalChecks = shopKPIs.reduce((acc, r) => acc + (r.total.checks as unknown as number), 0);
+                          const totalConv = totalVisitors > 0 ? (totalChecks / totalVisitors) * 100 : 0;
+                          const hasData = totalVisitors > 0;
+                          return (
+                            <>
+                              <td className={`number ${hasData ? '' : 'dimmed'}`}>{hasData ? totalVisitors.toLocaleString('ru-RU') : '—'}</td>
+                              <td className={`number ${hasData ? '' : 'dimmed'}`}>{hasData ? formatNumber(totalConv, 1) + '%' : '—'}</td>
+                              <td className="number dimmed">—</td>
+                              <td className="number dimmed">—</td>
+                            </>
+                          );
+                        })()}
                       </tr>
                     </tbody>
                   </table>

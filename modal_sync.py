@@ -120,16 +120,22 @@ def run_sync_job():
     try:
         import custom_inventory_sync
         import sync_to_supabase
+        import sync_visitors
         
         # --- JOB 1: INVENTORY SYNC ---
-        log.info("📦 [1/2] Syncing INVENTORY...")
+        log.info("📦 [1/3] Syncing INVENTORY...")
         custom_inventory_sync.upload_to_supabase(custom_inventory_sync.extract_inventory())
         log.info("✅ Inventory sync completed.")
 
         # --- JOB 2: SALES SYNC ---
-        log.info("💰 [2/2] Syncing SALES...")
+        log.info("💰 [2/3] Syncing SALES...")
         sync_to_supabase.main()
         log.info("✅ Sales sync completed.")
+
+        # --- JOB 3: VISITORS (TRAFFIC) SYNC ---
+        log.info("🚶 [3/3] Syncing VISITORS...")
+        sync_visitors.main()
+        log.info("✅ Visitors sync completed.")
         
     except Exception as e:
         log.error(f"❌ Sync failed: {e}")
