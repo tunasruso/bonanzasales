@@ -67,6 +67,14 @@ def calculate_weight_and_category(product_group, product_name, qty_base, weights
     if match:
         category = match.get('category', 'second')
         avg_weight = float(match.get('avg_weight_kg') or 0.0)
+    
+    # Fallback for KP missing in DB
+    pn = str(product_name).lower()
+    pg = str(product_group).lower()
+    kp_kw = ['кпб', 'пододеяльник', 'простын', 'наволоч', 'комплект постельного', 'полотенце']
+    if any(k in pg or k in pn for k in kp_kw):
+        category = 'new'
+        avg_weight = 0.0
         
     if category == 'new':
         return 0.0, 'new', 'шт'

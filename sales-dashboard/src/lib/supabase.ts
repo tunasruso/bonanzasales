@@ -166,9 +166,18 @@ export function getProductCategoryAndWeight(record: any, weights: ProductWeight[
     avgWeight = Number(match.avg_weight_kg);
   }
 
+  // Fallback for BEDDING/NEW that may be missing in DB rules
+  const gNameL = pGroup.toLowerCase();
+  const pNameL = pName.toLowerCase();
+  const kpKeywords = ['кпб', 'пододеяльник', 'простын', 'наволоч', 'комплект постельного', 'полотенце'];
+  if (kpKeywords.some(k => gNameL.includes(k) || pNameL.includes(k))) {
+    category = 'new';
+    avgWeight = 0;
+  }
+
   // Detection of specific subcategories for detailed report
   const isAPlus = (pName.includes('A+') || pName.includes('А+'));
-  const isBedding = (pGroup === 'КПБ' || pGroup.includes('КПБ') || pName.includes('КПБ'));
+  const isBedding = category === 'new';
 
   // Calculate total weight for this line
   if (category === 'new') {
