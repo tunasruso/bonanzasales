@@ -130,7 +130,7 @@ export default function App() {
         selectedGroups.length > 0 ? selectedGroups : undefined,
         selectedProducts.length > 0 ? selectedProducts : undefined
       ),
-      fetchInventory(),
+      fetchInventory(endDate),
       fetchShopDetailedKPIs(startDate, endDate, selectedStores.length > 0 ? selectedStores : undefined),
       fetchVisitors(startDate, endDate, selectedStores.length > 0 ? selectedStores : undefined)
     ]);
@@ -835,6 +835,197 @@ export default function App() {
                 </div>
               </div>
 
+              {/* ===== TURNOVER / ОБОРАЧИВАЕМОСТЬ ===== */}
+              {(() => {
+                // Exclude non-retail warehouses
+                const excludeStores = ['Основной склад'];
+
+                // Calculate stock per store (only weighted items in KG from inventory_analytics)
+                const stockByStore = new Map<string, number>();
+                inventoryData.forEach(item => {
+                  if (excludeStores.includes(item.store)) return;
+                  if (item.unit !== 'кг') return; // Only use KG items for turnover
+
+                  // Apply global filters
+                  if (selectedStores.length > 0 && !selectedStores.includes(item.store)) return;
+                  if (selectedGroups.length > 0 && item.product_group && !selectedGroups.includes(item.product_group)) return;
+                  if (selectedProducts.length > 0 && !selectedProducts.includes(item.product)) return;
+
+                  stockByStore.set(item.store, (stockByStore.get(item.store) || 0) + item.quantity);
+                });
+
+                // Calculate total kg sold per store in selected period
+                const salesKgByStore = new Map<string, number>();
+                salesData.forEach(record => {
+                  if (excludeStores.includes(record.store)) return;
+                  const estimatedKg = calculateEstimatedWeight(record, productWeights);
+                  const rowKg = estimatedKg > 0 ? estimatedKg : Number(record.quantity_kg);
+                  salesKgByStore.set(record.store, (salesKgByStore.get(record.store) || 0) + rowKg);
+                });
+
+                // Calculate number of days in period
+                const start = new Date(startDate);
+                const end = new Date(endDate);
+                const periodDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
+                // Build turnover data per store
+                type TurnoverRow = {
+                  store: string;
+                  stockQty: number;
+                  totalSalesKg: number;
+                  dailySalesKg: number;
+                  daysToSell: number;
+                  status: 'excellent' | 'good' | 'warning' | 'critical';
+                };
+
+                const getTurnoverStatus = (days: number): TurnoverRow['status'] => {
+                  if (days <= 30) return 'excellent';
+                  if (days <= 60) return 'good';
+                  if (days <= 90) return 'warning';
+                  return 'critical';
+                };
+
+                const getStatusLabel = (status: string) => {
+                  switch (status) {
+                    case 'excellent': return '✅ Быстрая';
+                    case 'good': return '🟡 Норма';
+                    case 'warning': return '🟠 Медленная';
+                    case 'critical': return '🔴 Застой';
+                    default: return '';
+                  }
+                };
+
+                const turnoverData: TurnoverRow[] = [];
+                const allStores = new Set([...stockByStore.keys(), ...salesKgByStore.keys()]);
+
+                allStores.forEach(store => {
+                  const stockQty = stockByStore.get(store) || 0;
+                  const totalSalesKg = salesKgByStore.get(store) || 0;
+                  const dailySalesKg = totalSalesKg / periodDays;
+                  const daysToSell = dailySalesKg > 0 ? stockQty / dailySalesKg : 999;
+
+                  turnoverData.push({
+                    store,
+                    stockQty,
+                    totalSalesKg,
+                    dailySalesKg,
+                    daysToSell: Math.round(daysToSell),
+                    status: getTurnoverStatus(daysToSell)
+                  });
+                });
+
+                // Sort: critical first, then by days descending
+                turnoverData.sort((a, b) => b.daysToSell - a.daysToSell);
+
+                // Summary counts
+                const statusCounts = { excellent: 0, good: 0, warning: 0, critical: 0 };
+                turnoverData.forEach(r => statusCounts[r.status]++);
+
+                const totalStockAll = turnoverData.reduce((s, r) => s + r.stockQty, 0);
+                const totalDailySales = turnoverData.reduce((s, r) => s + r.dailySalesKg, 0);
+                const avgDaysAll = totalDailySales > 0 ? Math.round(totalStockAll / totalDailySales) : 0;
+
+                return (
+                  <div className="turnover-section">
+                    <div className="turnover-header">
+                      <h3>
+                        📦 Оборачиваемость товара
+                        <span className="period-badge">{periodDays} дн. • Ср. {avgDaysAll} дн.</span>
+                      </h3>
+                    </div>
+
+                    {/* Summary */}
+                    <div className="turnover-summary">
+                      <div className="turnover-summary-item">
+                        <span className="summary-dot excellent"></span>
+                        <span className="summary-label">≤30 дн.</span>
+                        <span className="summary-value">{statusCounts.excellent}</span>
+                      </div>
+                      <div className="turnover-summary-item">
+                        <span className="summary-dot good"></span>
+                        <span className="summary-label">31–60 дн.</span>
+                        <span className="summary-value">{statusCounts.good}</span>
+                      </div>
+                      <div className="turnover-summary-item">
+                        <span className="summary-dot warning"></span>
+                        <span className="summary-label">61–90 дн.</span>
+                        <span className="summary-value">{statusCounts.warning}</span>
+                      </div>
+                      <div className="turnover-summary-item">
+                        <span className="summary-dot critical"></span>
+                        <span className="summary-label">&gt;90 дн.</span>
+                        <span className="summary-value">{statusCounts.critical}</span>
+                      </div>
+                      <div className="turnover-summary-item" style={{ marginLeft: 'auto' }}>
+                        <span className="summary-label">Остаток всего</span>
+                        <span className="summary-value" style={{ color: 'var(--accent-blue)' }}>{formatNumber(totalStockAll, 1)} кг</span>
+                      </div>
+                      <div className="turnover-summary-item">
+                        <span className="summary-label">Продажи/день</span>
+                        <span className="summary-value" style={{ color: 'var(--accent-purple)' }}>{formatNumber(totalDailySales, 1)} кг</span>
+                      </div>
+                    </div>
+
+                    {turnoverData.length > 0 ? (
+                      <div className="turnover-grid">
+                        {turnoverData.map((row, i) => {
+                          const progressPct = Math.min(100, (row.daysToSell / 120) * 100);
+                          return (
+                            <div className="turnover-card" key={i}>
+                              <div className="store-name">
+                                <span className="store-icon">🏬</span>
+                                {row.store}
+                              </div>
+
+                              <div className="turnover-days-block">
+                                <div>
+                                  <div className={`turnover-days-value ${row.status}`}>
+                                    {row.daysToSell > 900 ? '∞' : row.daysToSell}
+                                  </div>
+                                  <div className="turnover-days-label">дней до продажи</div>
+                                </div>
+                                <span className={`turnover-status-badge ${row.status}`}>
+                                  {getStatusLabel(row.status)}
+                                </span>
+                              </div>
+
+                              <div className="turnover-progress-track">
+                                <div
+                                  className={`turnover-progress-fill ${row.status}`}
+                                  style={{ width: `${progressPct}%` }}
+                                />
+                              </div>
+
+                              <div className="turnover-metrics">
+                                <div className="turnover-metric">
+                                  <div className="metric-label">Остаток, кг</div>
+                                  <div className="metric-value stock">{formatNumber(row.stockQty, 1)}</div>
+                                </div>
+                                <div className="turnover-metric">
+                                  <div className="metric-label">Прод./день</div>
+                                  <div className="metric-value daily-sales">{formatNumber(row.dailySalesKg, 1)}</div>
+                                </div>
+                                <div className="turnover-metric">
+                                  <div className="metric-label">Всего кг</div>
+                                  <div className="metric-value">{formatNumber(row.totalSalesKg, 1)}</div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="no-turnover-data">
+                        Нет данных по остаткам. Запустите синхронизацию инвентаря.
+                      </div>
+                    )}
+
+                    <div className="table-legend" style={{ marginTop: 16, padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      <p><strong>Формула:</strong> Дней до продажи = Остаток (кг) ÷ Средние продажи в день (кг). Остаток — текущий снапшот из 1С. Продажи — за выбранный период фильтров.</p>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Charts (Keep charts as is) */}
               <div className="charts-grid">

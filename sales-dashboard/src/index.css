@@ -855,3 +855,307 @@ body {
     padding: 8px 10px;
   }
 }
+
+/* ========================================
+   TURNOVER TABLE (ОБОРАЧИВАЕМОСТЬ)
+   ======================================== */
+
+.turnover-section {
+  background: var(--bg-card);
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 24px;
+  margin-top: 24px;
+  margin-bottom: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.turnover-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #22c55e 0%, #eab308 33%, #f97316 66%, #ef4444 100%);
+}
+
+.turnover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.turnover-header h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.turnover-header .period-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: rgba(0, 212, 255, 0.12);
+  color: var(--accent-blue);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+}
+
+.turnover-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.turnover-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.turnover-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+.turnover-card .store-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.turnover-card .store-name .store-icon {
+  font-size: 1.1rem;
+}
+
+.turnover-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.turnover-metric {
+  text-align: center;
+}
+
+.turnover-metric .metric-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.turnover-metric .metric-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.turnover-metric .metric-value.stock {
+  color: var(--accent-blue);
+}
+
+.turnover-metric .metric-value.daily-sales {
+  color: var(--accent-purple);
+}
+
+/* Turnover Days - the big number */
+.turnover-days-block {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.turnover-days-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.turnover-days-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.turnover-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* Status colors */
+.turnover-status-badge.excellent {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.turnover-status-badge.good {
+  background: rgba(234, 179, 8, 0.12);
+  color: #facc15;
+  border: 1px solid rgba(234, 179, 8, 0.3);
+}
+
+.turnover-status-badge.warning {
+  background: rgba(249, 115, 22, 0.15);
+  color: #fb923c;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.turnover-status-badge.critical {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* Progress bar for turnover */
+.turnover-progress-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.turnover-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.turnover-progress-fill.excellent {
+  background: linear-gradient(90deg, #22c55e, #4ade80);
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+}
+
+.turnover-progress-fill.good {
+  background: linear-gradient(90deg, #eab308, #facc15);
+  box-shadow: 0 0 8px rgba(234, 179, 8, 0.4);
+}
+
+.turnover-progress-fill.warning {
+  background: linear-gradient(90deg, #f97316, #fb923c);
+  box-shadow: 0 0 8px rgba(249, 115, 22, 0.4);
+}
+
+.turnover-progress-fill.critical {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+.turnover-days-value.excellent {
+  color: #4ade80;
+}
+
+.turnover-days-value.good {
+  color: #facc15;
+}
+
+.turnover-days-value.warning {
+  color: #fb923c;
+}
+
+.turnover-days-value.critical {
+  color: #f87171;
+}
+
+/* Summary bar at top */
+.turnover-summary {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.turnover-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.turnover-summary-item .summary-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.turnover-summary-item .summary-dot.excellent {
+  background: #4ade80;
+}
+
+.turnover-summary-item .summary-dot.good {
+  background: #facc15;
+}
+
+.turnover-summary-item .summary-dot.warning {
+  background: #fb923c;
+}
+
+.turnover-summary-item .summary-dot.critical {
+  background: #f87171;
+}
+
+.turnover-summary-item .summary-label {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.turnover-summary-item .summary-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.no-turnover-data {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  .turnover-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .turnover-summary {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .turnover-days-value {
+    font-size: 1.6rem;
+  }
+}

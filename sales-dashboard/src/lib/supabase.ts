@@ -75,7 +75,8 @@ export async function fetchSalesData(
     .select('*')
     .gte('sale_date', startDate)
     .lte('sale_date', endDate)
-    .order('sale_date', { ascending: true });
+    .order('sale_date', { ascending: true })
+    .order('id', { ascending: true });
 
   if (stores && stores.length > 0) {
     query = query.in('store', stores);
@@ -252,7 +253,9 @@ export async function fetchShopDetailedKPIs(
     .from('sales_analytics')
     .select('revenue, quantity_kg, quantity_pcs, recorder_id, store, product_group, product')
     .gte('sale_date', startDate)
-    .lte('sale_date', endDate);
+    .lte('sale_date', endDate)
+    .order('sale_date', { ascending: true })
+    .order('id', { ascending: true });
 
   if (stores && stores.length > 0) query = query.in('store', stores);
 
@@ -260,7 +263,9 @@ export async function fetchShopDetailedKPIs(
     .from('sales_analytics')
     .select('revenue, store')
     .gte('sale_date', formattedPrevStart)
-    .lte('sale_date', formattedPrevEnd);
+    .lte('sale_date', formattedPrevEnd)
+    .order('sale_date', { ascending: true })
+    .order('id', { ascending: true });
 
   if (stores && stores.length > 0) prevQuery = prevQuery.in('store', stores);
 
@@ -270,7 +275,9 @@ export async function fetchShopDetailedKPIs(
       .from('sales_analytics')
       .select('revenue, store')
       .gte('sale_date', formattedPrevWeekStart)
-      .lte('sale_date', formattedPrevWeekEnd);
+      .lte('sale_date', formattedPrevWeekEnd)
+      .order('sale_date', { ascending: true })
+      .order('id', { ascending: true });
 
     if (stores && stores.length > 0) prevWeekQuery = prevWeekQuery.in('store', stores);
   }
@@ -408,7 +415,9 @@ export async function fetchKPIs(
     .from('sales_analytics')
     .select('revenue, quantity_kg, quantity_pcs, recorder_id, store, product_group, product')
     .gte('sale_date', startDate)
-    .lte('sale_date', endDate);
+    .lte('sale_date', endDate)
+    .order('sale_date', { ascending: true })
+    .order('id', { ascending: true });
 
   if (stores && stores.length > 0) query = query.in('store', stores);
   if (productGroups && productGroups.length > 0) query = query.in('product_group', productGroups);
@@ -496,16 +505,50 @@ export interface InventoryRecord {
   product: string;
   quantity: number;
   product_group?: string;
+  unit?: string;
 }
 
-export async function fetchInventory(): Promise<InventoryRecord[]> {
-  // Inventory is not large (a few thousand rows), but using fetchAll is safer
-  const query = supabase
-    .from('inventory_analytics')
-    .select('store, product, quantity, product_group');
-
+export async function fetchInventory(reportDate?: string): Promise<InventoryRecord[]> {
   try {
+    // If a date is specified, find the closest snapshot_date <= reportDate
+    let targetDate = reportDate;
+
+    if (targetDate) {
+      // Find the nearest snapshot date that is <= the requested date
+      const { data: dates } = await supabase
+        .from('inventory_analytics')
+        .select('snapshot_date')
+        .lte('snapshot_date', targetDate)
+        .order('snapshot_date', { ascending: false })
+        .limit(1);
+
+      if (dates && dates.length > 0) {
+        targetDate = dates[0].snapshot_date;
+      }
+    } else {
+      // Find the latest snapshot date
+      const { data: dates } = await supabase
+        .from('inventory_analytics')
+        .select('snapshot_date')
+        .order('snapshot_date', { ascending: false })
+        .limit(1);
+
+      if (dates && dates.length > 0) {
+        targetDate = dates[0].snapshot_date;
+      }
+    }
+
+    let query = supabase
+      .from('inventory_analytics')
+      .select('store, product, quantity, product_group, unit')
+      .order('id', { ascending: true });
+
+    if (targetDate) {
+      query = query.eq('snapshot_date', targetDate);
+    }
+
     const data = await fetchAll(query);
+    console.log(`📦 Inventory loaded: ${data.length} items for snapshot ${targetDate || 'latest'}`);
     return data;
   } catch (error) {
     console.error('Error fetching inventory:', error);
@@ -554,7 +597,8 @@ export async function fetchVisitors(
     .from('visitors_analytics')
     .select('visit_date, store, visitor_count')
     .gte('visit_date', startDate)
-    .lte('visit_date', endDate);
+    .lte('visit_date', endDate)
+    .order('visit_date', { ascending: true });
 
   if (stores && stores.length > 0) {
     query = query.in('store', stores);

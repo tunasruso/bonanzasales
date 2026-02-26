@@ -33,6 +33,7 @@ image = (
     # Mount the verified sync scripts
     .add_local_file("/Users/tunasruso/Documents/Antigravity/StasSales1CBackEnd/custom_inventory_sync.py", "/root/custom_inventory_sync.py")
     .add_local_file("/Users/tunasruso/Documents/Antigravity/StasSales1CBackEnd/sync_to_supabase.py", "/root/sync_to_supabase.py")
+    .add_local_file("/Users/tunasruso/Documents/Antigravity/StasSales1CBackEnd/sync_visitors.py", "/root/sync_visitors.py")
 )
 
 # App definition with Secret
