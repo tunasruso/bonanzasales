@@ -169,7 +169,7 @@ export function getProductCategoryAndWeight(record: any, weights: ProductWeight[
   // Fallback for BEDDING/NEW that may be missing in DB rules
   const gNameL = pGroup.toLowerCase();
   const pNameL = pName.toLowerCase();
-  const kpKeywords = ['кпб', 'пододеяльник', 'простын', 'наволоч', 'комплект постельного', 'полотенце'];
+  const kpKeywords = ['кпб', 'пододеяльник', 'простын', 'наволоч', 'комплект постельного', 'полотен'];
   if (kpKeywords.some(k => gNameL.includes(k) || pNameL.includes(k))) {
     category = 'new';
     avgWeight = 0;
