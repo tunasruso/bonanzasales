@@ -192,13 +192,6 @@ export function calculateEstimatedWeight(record: any, weights: ProductWeight[]):
   return getProductCategoryAndWeight(record, weights).weight;
 }
 
-// In-process accumulation interface
-interface AccumulatorDetailedKPI {
-  revenue: number;
-  kg: number;
-  pcs: number;
-  checks: Set<string>;
-}
 
 export interface DetailedKPI {
   revenue: number;
@@ -224,183 +217,72 @@ export async function fetchShopDetailedKPIs(
   endDate: string,
   stores?: string[]
 ) {
-  // Calculate Comparable Period (one month before)
+  // Determine if period is short (<= 7 days) for week-over-week comparison
   const start = new Date(startDate);
   const end = new Date(endDate);
-  const prevStart = new Date(start);
-  prevStart.setMonth(prevStart.getMonth() - 1);
-  const prevEnd = new Date(end);
-  prevEnd.setMonth(prevEnd.getMonth() - 1);
-
-  const formattedPrevStart = prevStart.toISOString().split('T')[0];
-  const formattedPrevEnd = prevEnd.toISOString().split('T')[0];
-
-  // Calculate Weekly Info if period is <= 7 days
-  const timeDiff = end.getTime() - start.getTime();
-  const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1; // +1 to include start date
+  const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1;
   const isShortPeriod = daysDiff <= 7;
 
-  let formattedPrevWeekStart = '';
-  let formattedPrevWeekEnd = '';
-
-  if (isShortPeriod) {
-    const prevWeekStart = new Date(start);
-    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
-    const prevWeekEnd = new Date(end);
-    prevWeekEnd.setDate(prevWeekEnd.getDate() - 7);
-
-    formattedPrevWeekStart = prevWeekStart.toISOString().split('T')[0];
-    formattedPrevWeekEnd = prevWeekEnd.toISOString().split('T')[0];
-  }
-
-  let query = supabase
-    .from('sales_analytics')
-    .select('revenue, quantity_kg, quantity_pcs, recorder_id, store, product_group, product')
-    .gte('sale_date', startDate)
-    .lte('sale_date', endDate)
-    .order('sale_date', { ascending: true })
-    .order('id', { ascending: true });
-
-  if (stores && stores.length > 0) query = query.in('store', stores);
-
-  let prevQuery = supabase
-    .from('sales_analytics')
-    .select('revenue, store')
-    .gte('sale_date', formattedPrevStart)
-    .lte('sale_date', formattedPrevEnd)
-    .order('sale_date', { ascending: true })
-    .order('id', { ascending: true });
-
-  if (stores && stores.length > 0) prevQuery = prevQuery.in('store', stores);
-
-  let prevWeekQuery = null;
-  if (isShortPeriod) {
-    prevWeekQuery = supabase
-      .from('sales_analytics')
-      .select('revenue, store')
-      .gte('sale_date', formattedPrevWeekStart)
-      .lte('sale_date', formattedPrevWeekEnd)
-      .order('sale_date', { ascending: true })
-      .order('id', { ascending: true });
-
-    if (stores && stores.length > 0) prevWeekQuery = prevWeekQuery.in('store', stores);
-  }
-
   try {
-    const [data, prevData, prevWeekData] = await Promise.all([
-      fetchAll(query),
-      fetchAll(prevQuery),
-      isShortPeriod && prevWeekQuery ? fetchAll(prevWeekQuery) : Promise.resolve([])
-    ]);
+    const weights = await fetchProductWeights();
+    const weightsParam = weights.map(w => ({
+      product_group: w.product_group,
+      product_name_pattern: w.product_name_pattern,
+      category: w.category,
+      avg_weight_kg: w.avg_weight_kg
+    }));
 
+    const { data, error } = await supabase.rpc('get_shop_kpis_aggregated', {
+      p_start:    startDate,
+      p_end:      endDate,
+      p_stores:   stores && stores.length > 0 ? stores : null,
+      p_weights:  weightsParam,
+      p_is_short: isShortPeriod
+    });
+
+    if (error) { console.error('Error fetching shop KPIs (rpc):', error); return []; }
     if (!data) return [];
 
-    const weights = await fetchProductWeights();
-    const shopsMap = new Map<string, { store: string, total: AccumulatorDetailedKPI, second: AccumulatorDetailedKPI, aPlus: AccumulatorDetailedKPI, bedding: AccumulatorDetailedKPI }>();
-    const prevShopsRevenue = new Map<string, number>();
-    const prevWeekShopsRevenue = new Map<string, number>();
+    const result: ShopDetailedKPI[] = (data as any[]).map(r => {
+      const totalRev    = Number(r.total_revenue   || 0);
+      const totalKg     = Number(r.total_kg        || 0);
+      const totalPcs    = Number(r.total_pcs       || 0);
+      const totalChecks = Number(r.total_checks    || 0);
+      const secRev      = Number(r.second_revenue  || 0);
+      const secKg       = Number(r.second_kg       || 0);
+      const secPcs      = Number(r.second_pcs      || 0);
+      const secChecks   = Number(r.second_checks   || 0);
+      const apRev       = Number(r.aplus_revenue   || 0);
+      const apKg        = Number(r.aplus_kg        || 0);
+      const apChecks    = Number(r.aplus_checks    || 0);
+      const bedRev      = Number(r.bedding_revenue || 0);
+      const bedChecks   = Number(r.bedding_checks  || 0);
+      const prevRev     = Number(r.prev_revenue    || 0);
+      const prevWkRev   = Number(r.prev_week_revenue || 0);
 
-    // Sum up previous period revenue
-    prevData.forEach((r: any) => {
-      const sName = r.store || 'Unknown';
-      prevShopsRevenue.set(sName, (prevShopsRevenue.get(sName) || 0) + Number(r.revenue));
-    });
-
-    // Sum up prev week revenue
-    if (prevWeekData) {
-      prevWeekData.forEach((r: any) => {
-        const sName = r.store || 'Unknown';
-        prevWeekShopsRevenue.set(sName, (prevWeekShopsRevenue.get(sName) || 0) + Number(r.revenue));
-      });
-    }
-
-    const getEmptyDetailed = (): AccumulatorDetailedKPI => ({ revenue: 0, kg: 0, pcs: 0, checks: new Set<string>() });
-
-    data.forEach((r: any) => {
-      const storeName = r.store || 'Unknown';
-      if (!shopsMap.has(storeName)) {
-        shopsMap.set(storeName, {
-          store: storeName,
-          total: getEmptyDetailed(),
-          second: getEmptyDetailed(),
-          aPlus: getEmptyDetailed(),
-          bedding: getEmptyDetailed()
-        });
-      }
-
-      const shop = shopsMap.get(storeName)!;
-      const { weight: calculatedWeight, category, isAPlus, isBedding } = getProductCategoryAndWeight(r, weights);
-
-      let rowKg = 0;
-      if (category === 'second') {
-        rowKg = calculatedWeight > 0 ? calculatedWeight : Number(r.quantity_kg);
-      }
-
-      const rowRev = Number(r.revenue);
-      const rowPcs = Number(r.quantity_pcs);
-      const checkId = r.recorder_id ? (r.recorder_id.includes('_') ? r.recorder_id.split('_')[0] : r.recorder_id) : null;
-
-      // Update TOTAL
-      shop.total.revenue += rowRev;
-      shop.total.kg += rowKg;
-      shop.total.pcs += rowPcs;
-      if (checkId) shop.total.checks.add(checkId);
-
-      // Update SECOND
-      if (category === 'second') {
-        shop.second.revenue += rowRev;
-        shop.second.kg += rowKg;
-        shop.second.pcs += rowPcs;
-        if (checkId) shop.second.checks.add(checkId);
-      }
-
-      // Update A+ (Subcategory of Second)
-      if (category === 'second' && isAPlus) {
-        shop.aPlus.revenue += rowRev;
-        shop.aPlus.kg += rowKg;
-        shop.aPlus.pcs += rowPcs;
-        if (checkId) shop.aPlus.checks.add(checkId);
-      }
-
-      // Update NEW GOODS (КПБ column — includes ALL 'new' category items: КПБ, Наволочка, Простыня, Полотенце, etc.)
-      if (category === 'new') {
-        shop.bedding.revenue += rowRev;
-        shop.bedding.kg += 0; // New goods have no weight
-        shop.bedding.pcs += rowPcs;
-        if (checkId) shop.bedding.checks.add(checkId);
-      }
-    });
-
-    // Finalize
-    const result: ShopDetailedKPI[] = Array.from(shopsMap.values()).map(s => {
-      const pastRevenue = prevShopsRevenue.get(s.store) || 0;
       let revenueGrowth = 0;
-      if (pastRevenue > 0) {
-        revenueGrowth = ((s.total.revenue - pastRevenue) / pastRevenue) * 100;
-      }
+      if (prevRev > 0) revenueGrowth = ((totalRev - prevRev) / prevRev) * 100;
 
-      const pastWeekRevenue = prevWeekShopsRevenue.get(s.store) || 0;
       let revenueGrowthWeek: number | undefined = undefined;
       if (isShortPeriod) {
-        if (pastWeekRevenue > 0) {
-          revenueGrowthWeek = ((s.total.revenue - pastWeekRevenue) / pastWeekRevenue) * 100;
-        } else {
-          revenueGrowthWeek = s.total.revenue > 0 ? 100 : 0;
-        }
+        revenueGrowthWeek = prevWkRev > 0
+          ? ((totalRev - prevWkRev) / prevWkRev) * 100
+          : (totalRev > 0 ? 100 : 0);
       }
 
       return {
-        store: s.store,
-        total: { ...s.total, checks: s.total.checks.size },
-        second: { ...s.second, checks: s.second.checks.size },
-        aPlus: { ...s.aPlus, checks: s.aPlus.checks.size },
-        bedding: { ...s.bedding, checks: s.bedding.checks.size },
+        store: r.store,
+        total:   { revenue: totalRev, kg: totalKg,  pcs: totalPcs, checks: totalChecks },
+        second:  { revenue: secRev,   kg: secKg,    pcs: secPcs,   checks: secChecks   },
+        aPlus:   { revenue: apRev,    kg: apKg,     pcs: 0,        checks: apChecks    },
+        bedding: { revenue: bedRev,   kg: 0,        pcs: 0,        checks: bedChecks   },
         revenueGrowth,
-        totalPastRevenue: pastRevenue,
+        totalPastRevenue: prevRev,
         revenueGrowthWeek,
-        totalPastWeekRevenue: isShortPeriod ? pastWeekRevenue : undefined
+        totalPastWeekRevenue: isShortPeriod ? prevWkRev : undefined
       };
     });
+
     return result;
   } catch (error) {
     console.error('Error fetching shop detailed KPIs:', error);
@@ -415,87 +297,70 @@ export async function fetchKPIs(
   productGroups?: string[],
   products?: string[]
 ) {
-  let query = supabase
-    .from('sales_analytics')
-    .select('revenue, quantity_kg, quantity_pcs, recorder_id, store, product_group, product')
-    .gte('sale_date', startDate)
-    .lte('sale_date', endDate)
-    .order('sale_date', { ascending: true })
-    .order('id', { ascending: true });
-
-  if (stores && stores.length > 0) query = query.in('store', stores);
-  if (productGroups && productGroups.length > 0) query = query.in('product_group', productGroups);
-  if (products && products.length > 0) query = query.in('product', products);
-
   try {
-    const data = await fetchAll(query);
-    if (!data) return null;
-
     const weights = await fetchProductWeights();
+    const weightsParam = weights.map(w => ({
+      product_group: w.product_group,
+      product_name_pattern: w.product_name_pattern,
+      category: w.category,
+      avg_weight_kg: w.avg_weight_kg
+    }));
 
-    const total = { revenue: 0, kg: 0, pcs: 0, checks: new Set<string>(), positions: 0 };
-    const second = { revenue: 0, kg: 0, pcs: 0, checks: new Set<string>(), positions: 0 };
-    const newGoods = { revenue: 0, kg: 0, pcs: 0, checks: new Set<string>(), positions: 0 };
-
-    data.forEach((r: any) => {
-      const { weight: calculatedWeight, category } = getProductCategoryAndWeight(r, weights);
-
-      let rowKg = 0;
-      if (category === 'second') {
-        rowKg = calculatedWeight > 0 ? calculatedWeight : Number(r.quantity_kg);
-      }
-
-      const rowRev = Number(r.revenue);
-      const rowPcs = Number(r.quantity_pcs);
-      const checkId = r.recorder_id ? (r.recorder_id.includes('_') ? r.recorder_id.split('_')[0] : r.recorder_id) : null;
-
-      total.revenue += rowRev;
-      total.kg += rowKg;
-      total.pcs += rowPcs;
-      total.positions++;
-      if (checkId) total.checks.add(checkId);
-
-      if (category === 'second') {
-        second.revenue += rowRev;
-        second.kg += rowKg;
-        second.pcs += rowPcs;
-        second.positions++;
-        if (checkId) second.checks.add(checkId);
-      } else {
-        newGoods.revenue += rowRev;
-        newGoods.pcs += rowPcs;
-        newGoods.positions++;
-        if (checkId) newGoods.checks.add(checkId);
-      }
+    const { data, error } = await supabase.rpc('get_kpis_aggregated', {
+      p_start:    startDate,
+      p_end:      endDate,
+      p_stores:   stores   && stores.length   > 0 ? stores   : null,
+      p_groups:   productGroups && productGroups.length > 0 ? productGroups : null,
+      p_products: products && products.length > 0 ? products : null,
+      p_weights:  weightsParam
     });
+
+    if (error) { console.error('Error fetching KPIs (rpc):', error); return null; }
+    if (!data || data.length === 0) return null;
+
+    const r = data[0];
+    const totalRev    = Number(r.total_revenue   || 0);
+    const totalKg     = Number(r.total_kg        || 0);
+    const totalPcs    = Number(r.total_pcs       || 0);
+    const totalChecks = Number(r.total_checks    || 0);
+    const totalPos    = Number(r.total_positions || 0);
+    const secRev      = Number(r.second_revenue  || 0);
+    const secKg       = Number(r.second_kg       || 0);
+    const secPcs      = Number(r.second_pcs      || 0);
+    const secChecks   = Number(r.second_checks   || 0);
+    const secPos      = Number(r.second_positions|| 0);
+    const newRev      = Number(r.new_revenue     || 0);
+    const newPcs      = Number(r.new_pcs         || 0);
+    const newChecks   = Number(r.new_checks      || 0);
+    const newPos      = Number(r.new_positions   || 0);
 
     return {
       total: {
-        revenue: total.revenue,
-        kg: total.kg,
-        pcs: total.pcs,
-        checks: total.checks.size,
-        avgCheck: total.checks.size > 0 ? total.revenue / total.checks.size : 0,
-        pricePerKg: total.kg > 0 ? total.revenue / total.kg : 0,
-        positions: total.positions
+        revenue:    totalRev,
+        kg:         totalKg,
+        pcs:        totalPcs,
+        checks:     totalChecks,
+        avgCheck:   totalChecks > 0 ? totalRev / totalChecks : 0,
+        pricePerKg: totalKg    > 0 ? totalRev / totalKg     : 0,
+        positions:  totalPos
       },
       second: {
-        revenue: second.revenue,
-        kg: second.kg,
-        pcs: second.pcs,
-        checks: second.checks.size,
-        avgCheck: second.checks.size > 0 ? second.revenue / second.checks.size : 0,
-        pricePerKg: second.kg > 0 ? second.revenue / second.kg : 0,
-        positions: second.positions
+        revenue:    secRev,
+        kg:         secKg,
+        pcs:        secPcs,
+        checks:     secChecks,
+        avgCheck:   secChecks > 0 ? secRev / secChecks : 0,
+        pricePerKg: secKg     > 0 ? secRev / secKg     : 0,
+        positions:  secPos
       },
       newGoods: {
-        revenue: newGoods.revenue,
-        kg: 0,
-        pcs: newGoods.pcs,
-        checks: newGoods.checks.size,
-        avgCheck: newGoods.checks.size > 0 ? newGoods.revenue / newGoods.checks.size : 0,
+        revenue:    newRev,
+        kg:         0,
+        pcs:        newPcs,
+        checks:     newChecks,
+        avgCheck:   newChecks > 0 ? newRev / newChecks : 0,
         pricePerKg: 0,
-        positions: newGoods.positions
+        positions:  newPos
       }
     };
   } catch (error) {
