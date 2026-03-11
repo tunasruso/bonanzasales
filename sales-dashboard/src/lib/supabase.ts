@@ -8,18 +8,13 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 export interface SalesRecord {
   id: number;
   sale_date: string;
-  day_of_month: number;
-  week_number: number;
   month: number;
-  quarter: number;
   year: number;
   weekday: string;
-  warehouse: string;
   store: string;
   product: string;
   product_group: string;
   unit: string;
-  unit_type: 'kg' | 'pcs';
   quantity: number;
   quantity_pcs: number;
   quantity_kg: number;
@@ -72,7 +67,7 @@ export async function fetchSalesData(
 ): Promise<SalesRecord[]> {
   let query = supabase
     .from('sales_analytics')
-    .select('*')
+    .select('id, sale_date, month, year, weekday, store, product_group, product, unit, quantity, quantity_pcs, quantity_kg, revenue')
     .gte('sale_date', startDate)
     .lte('sale_date', endDate)
     .order('sale_date', { ascending: true })
@@ -565,7 +560,15 @@ export async function fetchInventory(reportDate?: string): Promise<InventoryReco
   }
 }
 
+// Module-level cache for product weights (TTL: 1 hour)
+let _weightsCache: { data: ProductWeight[]; timestamp: number } | null = null;
+const WEIGHTS_CACHE_TTL = 60 * 60 * 1000;
+
 export async function fetchProductWeights(): Promise<ProductWeight[]> {
+  if (_weightsCache && Date.now() - _weightsCache.timestamp < WEIGHTS_CACHE_TTL) {
+    return _weightsCache.data;
+  }
+
   const { data, error } = await supabase
     .from('product_weights')
     .select('*');
@@ -574,7 +577,9 @@ export async function fetchProductWeights(): Promise<ProductWeight[]> {
     console.error('Error fetching weights:', error);
     return [];
   }
-  return data as ProductWeight[];
+
+  _weightsCache = { data: data as ProductWeight[], timestamp: Date.now() };
+  return _weightsCache.data;
 }
 
 export async function checkUser(username: string, password: string): Promise<boolean> {

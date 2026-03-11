@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -94,6 +94,9 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showFilters, setShowFilters] = useState(window.innerWidth > 768);
 
+  // In-memory cache for loadData results (key = params string, max 5 entries)
+  const dataCache = useRef<Map<string, any>>(new Map());
+
   // Pivot state
   const [rowDimension, setRowDimension] = useState('store');
   const [sortColumn, setSortColumn] = useState('revenue');
@@ -117,23 +120,45 @@ export default function App() {
   }, []);
 
   // Load sales and inventory data
-  const loadData = async () => {
+  // force=true bypasses cache (used by Refresh button to get fresh data)
+  const loadData = async (force = false) => {
+    const stores_ = selectedStores.length > 0 ? selectedStores : undefined;
+    const groups_ = selectedGroups.length > 0 ? selectedGroups : undefined;
+    const products_ = selectedProducts.length > 0 ? selectedProducts : undefined;
+
+    const cacheKey = [
+      startDate, endDate,
+      [...selectedStores].sort().join(','),
+      [...selectedGroups].sort().join(','),
+      [...selectedProducts].sort().join(',')
+    ].join('|');
+
+    if (!force && dataCache.current.has(cacheKey)) {
+      const cached = dataCache.current.get(cacheKey);
+      setSalesData(cached.data);
+      setKpis(cached.kpiData);
+      setInventoryData(cached.inventory);
+      setShopKPIs(cached.shopData);
+      setVisitorsData(cached.visitors);
+      return;
+    }
+
     setLoading(true);
     const [data, kpiData, inventory, shopData, visitors] = await Promise.all([
-      fetchSalesData(startDate, endDate,
-        selectedStores.length > 0 ? selectedStores : undefined,
-        selectedGroups.length > 0 ? selectedGroups : undefined,
-        selectedProducts.length > 0 ? selectedProducts : undefined
-      ),
-      fetchKPIs(startDate, endDate,
-        selectedStores.length > 0 ? selectedStores : undefined,
-        selectedGroups.length > 0 ? selectedGroups : undefined,
-        selectedProducts.length > 0 ? selectedProducts : undefined
-      ),
+      fetchSalesData(startDate, endDate, stores_, groups_, products_),
+      fetchKPIs(startDate, endDate, stores_, groups_, products_),
       fetchInventory(endDate),
-      fetchShopDetailedKPIs(startDate, endDate, selectedStores.length > 0 ? selectedStores : undefined),
-      fetchVisitors(startDate, endDate, selectedStores.length > 0 ? selectedStores : undefined)
+      fetchShopDetailedKPIs(startDate, endDate, stores_),
+      fetchVisitors(startDate, endDate, stores_)
     ]);
+
+    // Keep cache at max 5 entries (FIFO)
+    if (dataCache.current.size >= 5) {
+      const firstKey = dataCache.current.keys().next().value;
+      dataCache.current.delete(firstKey);
+    }
+    dataCache.current.set(cacheKey, { data, kpiData, inventory, shopData, visitors });
+
     setSalesData(data);
     setKpis(kpiData);
     setInventoryData(inventory);
@@ -426,7 +451,7 @@ export default function App() {
             Остатки
           </button>
         </div>
-        <button className="apply-btn" onClick={loadData} style={{ marginLeft: 'auto' }}>
+        <button className="apply-btn" onClick={() => loadData(true)} style={{ marginLeft: 'auto' }}>
           <RefreshCw size={16} style={{ marginRight: 8 }} />
           Обновить
         </button>
