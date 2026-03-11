@@ -155,7 +155,7 @@ export default function App() {
     // Keep cache at max 5 entries (FIFO)
     if (dataCache.current.size >= 5) {
       const firstKey = dataCache.current.keys().next().value;
-      dataCache.current.delete(firstKey);
+      if (firstKey !== undefined) dataCache.current.delete(firstKey);
     }
     dataCache.current.set(cacheKey, { data, kpiData, inventory, shopData, visitors });
 
@@ -544,7 +544,7 @@ export default function App() {
                 ))}
               </select>
             </div>
-            <button className="apply-btn" onClick={loadData}>
+            <button className="apply-btn" onClick={() => loadData()}>
               <RefreshCw size={16} style={{ marginRight: 8 }} />
               Применить
             </button>
