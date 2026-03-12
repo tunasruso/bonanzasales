@@ -224,19 +224,10 @@ export async function fetchShopDetailedKPIs(
   const isShortPeriod = daysDiff <= 7;
 
   try {
-    const weights = await fetchProductWeights();
-    const weightsParam = weights.map(w => ({
-      product_group: w.product_group,
-      product_name_pattern: w.product_name_pattern,
-      category: w.category,
-      avg_weight_kg: w.avg_weight_kg
-    }));
-
     const { data, error } = await supabase.rpc('get_shop_kpis_aggregated', {
       p_start:    startDate,
       p_end:      endDate,
       p_stores:   stores && stores.length > 0 ? stores : null,
-      p_weights:  weightsParam,
       p_is_short: isShortPeriod
     });
 
@@ -298,21 +289,12 @@ export async function fetchKPIs(
   products?: string[]
 ) {
   try {
-    const weights = await fetchProductWeights();
-    const weightsParam = weights.map(w => ({
-      product_group: w.product_group,
-      product_name_pattern: w.product_name_pattern,
-      category: w.category,
-      avg_weight_kg: w.avg_weight_kg
-    }));
-
     const { data, error } = await supabase.rpc('get_kpis_aggregated', {
       p_start:    startDate,
       p_end:      endDate,
-      p_stores:   stores   && stores.length   > 0 ? stores   : null,
+      p_stores:   stores        && stores.length        > 0 ? stores        : null,
       p_groups:   productGroups && productGroups.length > 0 ? productGroups : null,
-      p_products: products && products.length > 0 ? products : null,
-      p_weights:  weightsParam
+      p_products: products      && products.length      > 0 ? products      : null
     });
 
     if (error) { console.error('Error fetching KPIs (rpc):', error); return null; }
