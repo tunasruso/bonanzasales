@@ -20,7 +20,9 @@ RETURNS TABLE (
   bedding_revenue   numeric,
   bedding_checks    bigint,
   prev_revenue      numeric,
-  prev_week_revenue numeric
+  prev_week_revenue numeric,
+  prev_second_kg      numeric,
+  prev_week_second_kg numeric
 )
 LANGUAGE sql
 STABLE
@@ -67,7 +69,9 @@ AS $$
     SUM(CASE WHEN is_current AND category='new' THEN revenue ELSE 0 END)::numeric,
     COUNT(DISTINCT CASE WHEN is_current AND category='new' THEN NULLIF(check_id,'') END)::bigint,
     SUM(CASE WHEN is_prev      THEN revenue ELSE 0 END)::numeric,
-    SUM(CASE WHEN is_prev_week THEN revenue ELSE 0 END)::numeric
+    SUM(CASE WHEN is_prev_week THEN revenue ELSE 0 END)::numeric,
+    SUM(CASE WHEN is_prev      AND category='second' THEN row_kg ELSE 0 END)::numeric,
+    SUM(CASE WHEN is_prev_week AND category='second' THEN row_kg ELSE 0 END)::numeric
   FROM periods p
   GROUP BY p.store;
 $$;

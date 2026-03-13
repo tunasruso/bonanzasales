@@ -210,6 +210,10 @@ export interface ShopDetailedKPI {
   totalPastRevenue: number;
   revenueGrowthWeek?: number;
   totalPastWeekRevenue?: number;
+  secondKgGrowth: number;
+  secondKgGrowthWeek?: number;
+  pastSecondKg: number;
+  pastWeekSecondKg?: number;
 }
 
 export async function fetchShopDetailedKPIs(
@@ -248,8 +252,10 @@ export async function fetchShopDetailedKPIs(
       const apChecks    = Number(r.aplus_checks    || 0);
       const bedRev      = Number(r.bedding_revenue || 0);
       const bedChecks   = Number(r.bedding_checks  || 0);
-      const prevRev     = Number(r.prev_revenue    || 0);
-      const prevWkRev   = Number(r.prev_week_revenue || 0);
+      const prevRev       = Number(r.prev_revenue        || 0);
+      const prevWkRev     = Number(r.prev_week_revenue   || 0);
+      const prevSecKg     = Number(r.prev_second_kg      || 0);
+      const prevWkSecKg   = Number(r.prev_week_second_kg || 0);
 
       let revenueGrowth = 0;
       if (prevRev > 0) revenueGrowth = ((totalRev - prevRev) / prevRev) * 100;
@@ -261,6 +267,11 @@ export async function fetchShopDetailedKPIs(
           : (totalRev > 0 ? 100 : 0);
       }
 
+      const secondKgGrowth = prevSecKg > 0 ? ((secKg - prevSecKg) / prevSecKg) * 100 : 0;
+      const secondKgGrowthWeek: number | undefined = isShortPeriod
+        ? (prevWkSecKg > 0 ? ((secKg - prevWkSecKg) / prevWkSecKg) * 100 : (secKg > 0 ? 100 : 0))
+        : undefined;
+
       return {
         store: r.store,
         total:   { revenue: totalRev, kg: totalKg,  pcs: totalPcs, checks: totalChecks },
@@ -270,7 +281,11 @@ export async function fetchShopDetailedKPIs(
         revenueGrowth,
         totalPastRevenue: prevRev,
         revenueGrowthWeek,
-        totalPastWeekRevenue: isShortPeriod ? prevWkRev : undefined
+        totalPastWeekRevenue: isShortPeriod ? prevWkRev : undefined,
+        secondKgGrowth,
+        secondKgGrowthWeek,
+        pastSecondKg:     prevSecKg,
+        pastWeekSecondKg: isShortPeriod ? prevWkSecKg : undefined
       };
     });
 

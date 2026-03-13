@@ -625,7 +625,7 @@ export default function App() {
                       <tr>
                         <th rowSpan={2} style={{ minWidth: '120px', background: '#1f2937' }}>Магазин</th>
                         <th colSpan={3} style={{ background: 'rgba(59, 130, 246, 0.3)', borderBottom: '2px solid #3b82f6' }}>ИТОГО</th>
-                        <th colSpan={3} style={{ background: 'rgba(168, 85, 247, 0.3)', borderBottom: '2px solid #a855f7' }}>СЕКОНД</th>
+                        <th colSpan={5} style={{ background: 'rgba(168, 85, 247, 0.3)', borderBottom: '2px solid #a855f7' }}>СЕКОНД</th>
                         <th colSpan={4} style={{ background: 'rgba(236, 72, 153, 0.3)', borderBottom: '2px solid #ec4899' }}>Категория "А+"</th>
                         <th colSpan={2} style={{ background: 'rgba(6, 182, 212, 0.3)', borderBottom: '2px solid #06b6d4' }}>Новый (КПБ)</th>
                         <th colSpan={5} style={{ background: 'rgba(245, 158, 11, 0.3)', borderBottom: '2px solid #f59e0b' }}>Средний чек</th>
@@ -640,6 +640,8 @@ export default function App() {
                         {/* СЕКОНД sub-columns */}
                         <th style={{ background: 'rgba(168, 85, 247, 0.1)' }}>Выручка, ₽</th>
                         <th style={{ background: 'rgba(168, 85, 247, 0.1)' }}>Вес, Кг</th>
+                        <th style={{ background: 'rgba(168, 85, 247, 0.1)' }}>Прирост кг,<br />% месяц<br />назад</th>
+                        <th style={{ background: 'rgba(168, 85, 247, 0.1)' }}>Прирост кг,<br />% неделю<br />назад</th>
                         <th style={{ background: 'rgba(168, 85, 247, 0.1)' }}>Цена/Кг, ₽</th>
                         {/* A+ */}
                         <th style={{ background: 'rgba(236, 72, 153, 0.1)' }}>Выручка, ₽</th>
@@ -683,6 +685,12 @@ export default function App() {
                           {/* Секонд */}
                           <td className="number">{formatCurrency(row.second.revenue)}</td>
                           <td className="number">{formatNumber(row.second.kg, 1)}</td>
+                          <td className={`number ${row.secondKgGrowth > 0 ? 'growth-up' : row.secondKgGrowth < 0 ? 'growth-down' : 'dimmed'}`}>
+                            {row.pastSecondKg > 0 ? `${row.secondKgGrowth > 0 ? '+' : ''}${formatNumber(row.secondKgGrowth, 1)}%` : '—'}
+                          </td>
+                          <td className={`number ${row.secondKgGrowthWeek !== undefined ? (row.secondKgGrowthWeek > 0 ? 'growth-up' : row.secondKgGrowthWeek < 0 ? 'growth-down' : 'dimmed') : 'dimmed'}`}>
+                            {row.secondKgGrowthWeek !== undefined ? `${row.secondKgGrowthWeek > 0 ? '+' : ''}${formatNumber(row.secondKgGrowthWeek, 1)}%` : '—'}
+                          </td>
                           <td className="number">{formatCurrency(row.second.kg > 0 ? row.second.revenue / row.second.kg : 0)}</td>
                           {/* A+ */}
                           <td className="number">{formatCurrency(row.aPlus.revenue)}</td>
@@ -763,6 +771,21 @@ export default function App() {
                         </td>
                         <td className="number">{formatCurrency(shopKPIs.reduce((acc, r) => acc + r.second.revenue, 0))}</td>
                         <td className="number">{formatNumber(shopKPIs.reduce((acc, r) => acc + r.second.kg, 0), 1)}</td>
+                        <td className="number dimmed">{(() => {
+                          const currKg = shopKPIs.reduce((acc, r) => acc + r.second.kg, 0);
+                          const pastKg = shopKPIs.reduce((acc, r) => acc + r.pastSecondKg, 0);
+                          if (pastKg <= 0) return '—';
+                          const g = ((currKg - pastKg) / pastKg) * 100;
+                          return <span className={g > 0 ? 'growth-up' : g < 0 ? 'growth-down' : 'dimmed'}>{g > 0 ? '+' : ''}{formatNumber(g, 1)}%</span>;
+                        })()}</td>
+                        <td className="number dimmed">{(() => {
+                          const currKg = shopKPIs.reduce((acc, r) => acc + r.second.kg, 0);
+                          const pastKg = shopKPIs.reduce((acc, r) => acc + (r.pastWeekSecondKg || 0), 0);
+                          if (pastKg <= 0 && shopKPIs.every(r => r.secondKgGrowthWeek === undefined)) return '—';
+                          if (pastKg <= 0) return '—';
+                          const g = ((currKg - pastKg) / pastKg) * 100;
+                          return <span className={g > 0 ? 'growth-up' : g < 0 ? 'growth-down' : 'dimmed'}>{g > 0 ? '+' : ''}{formatNumber(g, 1)}%</span>;
+                        })()}</td>
                         <td className="number">
                           {formatCurrency(
                             shopKPIs.reduce((acc, r) => acc + r.second.kg, 0) > 0
