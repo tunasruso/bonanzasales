@@ -47,6 +47,7 @@ AS $$
       ON c.product_group = s.product_group AND c.product = s.product
     WHERE s.store IS NOT NULL
       AND (p_stores IS NULL OR s.store = ANY(p_stores))
+      AND COALESCE(c.category, 'second') != 'exclude'
       AND (
         s.sale_date BETWEEN p_start AND p_end
         OR s.sale_date BETWEEN (p_start - INTERVAL '1 month')::date AND (p_end - INTERVAL '1 month')::date
