@@ -49,6 +49,5 @@ AS $$
   WHERE s.sale_date BETWEEN p_start AND p_end
     AND (p_stores   IS NULL OR s.store         = ANY(p_stores))
     AND (p_groups   IS NULL OR s.product_group = ANY(p_groups))
-    AND (p_products IS NULL OR s.product       = ANY(p_products))
-    AND COALESCE(c.category, 'second') != 'exclude';
+    AND (p_products IS NULL OR s.product       = ANY(p_products));
 $$;
