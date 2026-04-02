@@ -171,7 +171,7 @@ export function getProductCategoryAndWeight(record: any, weights: ProductWeight[
   }
 
   // Detection of specific subcategories for detailed report
-  const isAPlus = (pName.includes('A+') || pName.includes('А+'));
+  const isAPlus = (pName.includes('A+') || pName.includes('А+') || pName.includes('А!') || pName.includes('A!'));
   const isBedding = category === 'new';
 
   // Calculate total weight for this line

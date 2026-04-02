@@ -36,7 +36,7 @@ AS $$
       (s.sale_date BETWEEN p_start AND p_end)                                                    AS is_current,
       (s.sale_date BETWEEN (p_start - INTERVAL '1 month')::date AND (p_end - INTERVAL '1 month')::date) AS is_prev,
       (p_is_short AND s.sale_date BETWEEN (p_start - INTERVAL '7 days')::date AND (p_end - INTERVAL '7 days')::date) AS is_prev_week,
-      (s.product LIKE '%A+%' OR s.product LIKE '%А+%')                                           AS is_aplus,
+      (s.product LIKE '%A+%' OR s.product LIKE '%А+%' OR s.product LIKE '%А!%' OR s.product LIKE '%A!%') AS is_aplus,
       COALESCE(c.category, 'second')                                                              AS category,
       CASE WHEN COALESCE(c.category,'second') = 'second' THEN
         CASE WHEN c.avg_weight_kg > 0 THEN s.quantity_pcs * c.avg_weight_kg ELSE s.quantity_kg END
