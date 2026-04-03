@@ -789,13 +789,15 @@ export default function App() {
             {activeTab === 'dashboard' && (
               <div className="filter-group">
                 <label>Период</label>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div className="date-range">
                   <input
+                    className="date-input"
                     type="date"
                     value={startDate}
                     onChange={e => setStartDate(e.target.value)}
                   />
                   <input
+                    className="date-input"
                     type="date"
                     value={endDate}
                     onChange={e => setEndDate(e.target.value)}
