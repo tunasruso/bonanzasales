@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Inventory Sync: Load stock balances from 1C register "ЗапасыНаСкладах" (AccumRg52568)
-as of a specific date into Supabase inventory_analytics table.
+as of a specific date into Supabase ecostok2_inventory_analytics table.
 
 Key insight: In 1C:Retail (Розница), quantities are stored in the base unit (шт = pieces).
 For secondhand clothing, there's also a KG unit with a conversion coefficient.
@@ -22,9 +22,11 @@ from collections import defaultdict
 from datetime import datetime, date
 
 # Configuration
-SUPABASE_URL = "https://lyfznzntclgitarujlab.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5Znpuem50Y2xnaXRhcnVqbGFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTM2OTgsImV4cCI6MjA2NzQ4OTY5OH0.UyUQzzKQ70p7RHw4TWHvUutMkGuo9VGZiGPdVZpVcs0"
-TABLE_NAME = "inventory_analytics"
+SUPABASE_URL = os.getenv('SUPABASE_URL', 'http://127.0.0.1:8100')
+SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_KEY')
+if not SUPABASE_KEY:
+    raise RuntimeError('SUPABASE_SERVICE_KEY is required')
+TABLE_NAME = "ecostok2_inventory_analytics"
 
 
 class DecimalEncoder(json.JSONEncoder):
@@ -38,7 +40,7 @@ def get_db_connection():
     return psycopg2.connect(
         host=os.getenv('POSTGRES_HOST', '100.91.185.91'),
         user=os.getenv('POSTGRES_USER', 'ecostock'),
-        password=os.getenv('POSTGRES_PASSWORD', 'Kd*2m5Th'),
+        password=os.getenv('POSTGRES_PASSWORD'),
         dbname=os.getenv('POSTGRES_DB', 'onec_ecostock_retail'),
         port=os.getenv('POSTGRES_PORT', 5444),
         connect_timeout=10
@@ -50,7 +52,7 @@ def fetch_product_weights():
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
     }
-    r = requests.get(f"{SUPABASE_URL}/rest/v1/product_weights?select=*", headers=headers)
+    r = requests.get(f"{SUPABASE_URL}/rest/v1/ecostok2_product_weights?select=*", headers=headers)
     r.raise_for_status()
     return r.json()
 

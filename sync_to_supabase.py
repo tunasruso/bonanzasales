@@ -25,8 +25,10 @@ DB_CONFIG = {
 }
 
 # Supabase
-SUPABASE_URL = "https://lyfznzntclgitarujlab.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5Znpuem50Y2xnaXRhcnVqbGFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTM2OTgsImV4cCI6MjA2NzQ4OTY5OH0.UyUQzzKQ70p7RHw4TWHvUutMkGuo9VGZiGPdVZpVcs0"
+SUPABASE_URL = os.getenv('SUPABASE_URL', 'http://127.0.0.1:8100')
+SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_KEY')
+if not SUPABASE_KEY:
+    raise RuntimeError('SUPABASE_SERVICE_KEY is required')
 
 # Column mappings (verified)
 WAREHOUSE_REF = '_Fld53725RRef'
@@ -199,7 +201,7 @@ def upload_to_supabase(records):
         'Prefer': 'resolution=merge-duplicates' # Handles duplicates by updating
     }
     
-    url = f"{SUPABASE_URL}/rest/v1/sales_analytics?on_conflict=recorder_id"
+    url = f"{SUPABASE_URL}/rest/v1/ecostok2_sales_analytics?on_conflict=recorder_id"
     
     total_uploaded = 0
     errors = 0

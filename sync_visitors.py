@@ -12,7 +12,7 @@ Source: Register _AccumRg53554 (Посетители)
     _Fld53557 = КоличествоПокупателей (buyer count)
     _Fld53558 = КоличествоПосетителей (VISITOR COUNT)
 
-Target: Supabase table `visitors_analytics`
+Target: Supabase table `ecostok2_visitors_analytics`
   - visit_date, store, visitor_count
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -34,13 +34,15 @@ from decimal import Decimal
 DB_CONFIG = {
     'host': os.getenv('POSTGRES_HOST', '127.0.0.1'),
     'user': os.getenv('POSTGRES_USER', 'ecostock'),
-    'password': os.getenv('POSTGRES_PASSWORD', 'Kd*2m5Th'),
+    'password': os.getenv('POSTGRES_PASSWORD'),
     'dbname': os.getenv('POSTGRES_DB', 'onec_ecostock_retail'),
     'port': os.getenv('POSTGRES_PORT', 5432)
 }
 
-SUPABASE_URL = "https://lyfznzntclgitarujlab.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5Znpuem50Y2xnaXRhcnVqbGFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTM2OTgsImV4cCI6MjA2NzQ4OTY5OH0.UyUQzzKQ70p7RHw4TWHvUutMkGuo9VGZiGPdVZpVcs0"
+SUPABASE_URL = os.getenv('SUPABASE_URL', 'http://127.0.0.1:8100')
+SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_KEY')
+if not SUPABASE_KEY:
+    raise RuntimeError('SUPABASE_SERVICE_KEY is required')
 
 # Register fields
 COUNTER_DEVICE_REF = '_Fld53555RRef'  # → _Reference648 (counter device)
@@ -148,7 +150,7 @@ def upload_visitors(records):
         'Prefer': 'resolution=merge-duplicates'
     }
 
-    url = f"{SUPABASE_URL}/rest/v1/visitors_analytics?on_conflict=visit_date,store"
+    url = f"{SUPABASE_URL}/rest/v1/ecostok2_visitors_analytics?on_conflict=visit_date,store"
 
     total_uploaded = 0
     errors = 0

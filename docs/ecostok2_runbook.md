@@ -1,146 +1,172 @@
 # Ecostok2 Runbook
 
-## Scope
+## Безопасность
 
-This runbook covers:
-- local raw sync from `172.16.0.45`
-- raw table verification in `ecostok2_*`
-- DM refresh execution on the Malaysia server
+Нельзя:
 
-It does not cover:
-- Modal production app changes
-- Docker / Supabase restarts
-- frontend code changes
+- трогать production `ecostok` таблицы без префикса;
+- рестартовать Docker/Supabase/PostgREST для refresh;
+- создавать новые Supabase stack/containers;
+- запускать тяжелые raw sales queries из frontend.
 
-## Paths
+Можно:
 
-- Repo: `/home/aleksandr/bonanzasales`
-- Local sync entrypoint: `/home/aleksandr/bonanzasales/local_ecostok2_sync.py`
-- Malaysia refresh script target path: `/root/bonanzasales2-ecostok2/refresh_ecostok2_dm_last3days.sh`
+- работать с `public.ecostok2_*`;
+- запускать `docker exec ... psql` внутри существующего контейнера `ecostok-supabase-db`;
+- обновлять frontend dist ecostok2;
+- reload nginx только при изменении nginx config.
 
-## Environment
-
-Required on the sync host:
+## Проверить refresh cron
 
 ```bash
-export ECOSTOK2_SUPABASE_SERVICE_KEY='...'
+crontab -l
+tail -80 /root/bonanzasales2-ecostok2/logs/dm_refresh.log
 ```
 
-Optional DB overrides:
+Ожидаемая cron-строка:
+
+```cron
+*/30 * * * * flock -n /tmp/ecostok2_dm_refresh.lock /root/bonanzasales2-ecostok2/refresh_ecostok2_dm_last3days.sh >> /root/bonanzasales2-ecostok2/logs/dm_refresh.log 2>&1
+```
+
+## Ручной refresh DM
 
 ```bash
-export POSTGRES_HOST=127.0.0.1
-export POSTGRES_PORT=5444
-export POSTGRES_USER=ecostock
-export POSTGRES_DB=onec_ecostock_retail
+bash /root/bonanzasales2-ecostok2/refresh_ecostok2_dm_last3days.sh
 ```
 
-## Standard sync commands
+Скрипт:
+
+- сам определяет диапазон `max(sale_date)-2 .. max(sale_date)`;
+- refresh-ит sales DM и `ecostok2_dm_inventory_current`;
+- проверяет raw vs DM;
+- при расхождениях завершает работу с `exit 1`.
+
+## Проверка sales raw vs DM vs fast RPC
 
 ```bash
-cd /home/aleksandr/bonanzasales
-
-python3 local_sync_sales.py --date-to 2026-04-25 --days-back 3
-python3 local_sync_visitors.py --date-to 2026-04-25 --days-back 3
-python3 local_sync_inventory.py --date-to 2026-04-25 --days-back 3
+docker exec -i ecostok-supabase-db psql -U postgres -d postgres -c "
+with days as (
+  select generate_series(
+    (select max(sale_date) - interval '2 days' from public.ecostok2_sales_analytics),
+    (select max(sale_date) from public.ecostok2_sales_analytics),
+    interval '1 day'
+  )::date as sale_date
+),
+raw as (
+  select
+    sale_date,
+    sum(revenue) raw_revenue,
+    count(*) raw_positions,
+    count(distinct coalesce(nullif(split_part(coalesce(recorder_id,''), '_', 1), ''), id::text)) raw_checks
+  from public.ecostok2_sales_analytics
+  where sale_date in (select sale_date from days)
+  group by sale_date
+),
+fast as (
+  select
+    d.sale_date,
+    f.total_revenue fast_revenue,
+    f.total_positions fast_positions,
+    f.total_checks fast_checks
+  from days d
+  cross join lateral public.ecostok2_get_kpis_aggregated_fast(d.sale_date, d.sale_date, null, null, null) f
+)
+select
+  r.sale_date,
+  r.raw_revenue,
+  dm.total_revenue dm_revenue,
+  f.fast_revenue,
+  dm.total_revenue - r.raw_revenue dm_diff,
+  f.fast_revenue - dm.total_revenue fast_diff,
+  r.raw_positions,
+  dm.total_positions dm_positions,
+  f.fast_positions,
+  r.raw_checks,
+  dm.total_checks_day dm_checks,
+  f.fast_checks
+from raw r
+join public.ecostok2_dm_sales_day dm on dm.sale_date = r.sale_date
+join fast f on f.sale_date = r.sale_date
+order by r.sale_date;
+"
 ```
 
-Dry-run:
+## Проверка inventory current
 
 ```bash
-python3 local_sync_sales.py --date-to 2026-04-25 --days-back 3 --dry-run
-python3 local_sync_visitors.py --date-to 2026-04-25 --days-back 3 --dry-run
-python3 local_sync_inventory.py --date-to 2026-04-25 --days-back 3 --dry-run
+docker exec -i ecostok-supabase-db psql -U postgres -d postgres -c "
+select 'raw_inventory' source, snapshot_date, count(*) rows, sum(quantity) qty
+from public.ecostok2_inventory_analytics
+where snapshot_date = (select max(snapshot_date) from public.ecostok2_inventory_analytics)
+group by snapshot_date
+union all
+select 'dm_inventory_current', snapshot_date, count(*) rows, sum(quantity) qty
+from public.ecostok2_dm_inventory_current
+group by snapshot_date;
+"
 ```
 
-## Validation after sync
+## Проверка visitors
 
-### Sales
-
-- verify `source rows == target rows`
-- verify `source revenue == target revenue`
-
-### Visitors
-
-- verify rows per day exist in `ecostok2_visitors_analytics`
-- verify `visitor_count` totals match source
-- current day may legitimately be empty
-
-### Inventory
-
-- verify `insert_errors = 0`
-- verify dedupe summary
-- verify counts:
+Visitors не идут через DM. Frontend читает `ecostok2_visitors_analytics` напрямую.
 
 ```bash
-curl -s 'https://ecostok2.lidertex.cloud/rest/v1/ecostok2_inventory_analytics?snapshot_date=eq.2026-04-25&select=snapshot_date' \
-  -H "apikey: $ECOSTOK2_SUPABASE_SERVICE_KEY" \
-  -H "Authorization: Bearer $ECOSTOK2_SUPABASE_SERVICE_KEY" \
-  -H 'Prefer: count=exact'
+docker exec -i ecostok-supabase-db psql -U postgres -d postgres -c "
+select visit_date, count(*) stores, sum(visitor_count) visitors
+from public.ecostok2_visitors_analytics
+where visit_date between current_date - interval '7 days' and current_date
+group by visit_date
+order by visit_date;
+"
 ```
 
-## Known incidents
-
-### Inventory insert failed with `id` null
-
-Symptom:
-- HTTP `400`
-- code `23502`
-- message about `id` not-null violation
-
-Meaning:
-- `ecostok2_inventory_analytics.id` had no default/identity
-
-Recovery:
-- fix DB default on server
-- rerun inventory sync only for affected dates
-
-### Inventory insert failed with duplicate key
-
-Symptom:
-- HTTP `409`
-- code `23505`
-- unique constraint on `(store, product, snapshot_date, unit)`
-
-Meaning:
-- duplicates existed inside transformed payload
-
-Recovery:
-- dedupe before insert by:
-  - `store`
-  - `product`
-  - `snapshot_date`
-  - `unit`
-
-### Visitors not visible in dashboard
-
-Checks:
-- confirm data exists in `ecostok2_visitors_analytics`
-- confirm deployed JS bundle reads `ecostok2_visitors_analytics`
-- confirm field name is `visitor_count`
-
-## Refresh
-
-Do not run from local host unless explicitly requested.
-
-Malaysia server cron job:
+## Проверка API
 
 ```bash
-flock -n /tmp/ecostok2_dm_refresh.lock /root/bonanzasales2-ecostok2/refresh_ecostok2_dm_last3days.sh
+curl -I https://ecostok2.lidertex.cloud
 ```
 
-## Rollback / recovery
-
-- Sales: rerun 3-day upsert window
-- Visitors: rerun 3-day upsert window
-- Inventory: rerun replace-by-date only for affected dates
-
-## Git operations
+Проверка fast RPC через REST:
 
 ```bash
-cd /home/aleksandr/bonanzasales
-git status --short
-git add .
-git commit -m "Add ecostok2 local sync and runbooks"
-git push origin main
+curl -sS -X POST https://ecostok2.lidertex.cloud/rest/v1/rpc/ecostok2_get_kpis_aggregated_fast \
+  -H "apikey: $SUPABASE_ANON_KEY" \
+  -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"p_start":"2026-04-25","p_end":"2026-04-25","p_stores":null,"p_groups":null,"p_products":null}'
 ```
+
+## Frontend build/deploy
+
+```bash
+cd /root/bonanzasales2-ecostok2/sales-dashboard
+npm run build
+rsync -a --delete dist/ /opt/ecostok2-sales-dashboard/dist/
+```
+
+## Nginx
+
+Config:
+
+```text
+/etc/nginx/sites-available/ecostok2.lidertex.cloud
+```
+
+Проверка:
+
+```bash
+nginx -t
+systemctl reload nginx
+```
+
+## Rollback
+
+Для refresh rollback обычно не нужен: скрипт пересчитывает последние 3 дня из raw. Если DM повреждены, повторить:
+
+```bash
+bash /root/bonanzasales2-ecostok2/refresh_ecostok2_dm_last3days.sh
+```
+
+Для frontend rollback: вернуть предыдущий commit и пересобрать `dist`.
+
